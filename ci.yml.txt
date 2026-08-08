@@ -1,0 +1,51 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Test
+        run: pytest -q
+
+      - name: Generate every example config
+        run: |
+          for c in configs/*.jsonc; do
+            echo "--- $c"
+            vtp --config "$c" --outputs raw,json
+          done
+
+      - name: Check every manifest reports a verified roundtrip
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          files = sorted(pathlib.Path("generated").glob("*.manifest.json"))
+          if not files:
+              sys.exit("manifest が 1 つも生成されていません")
+          for p in files:
+              doc = json.loads(p.read_text(encoding="utf-8"))
+              if not doc.get("roundtrip_verified"):
+                  sys.exit(f"{p}: roundtrip_verified が false です")
+              print(f"{p.name}: OK ({doc['raw_bytes']} bytes)")
+          PY

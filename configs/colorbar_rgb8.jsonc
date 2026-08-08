@@ -1,0 +1,13 @@
+{
+  // 一番素直な条件。8bit RGB のカラーバーを planar で保存する。
+  // 色変換もサブサンプリングも通らないので、パターン生成そのものの確認に使う。
+  "pattern": "colorbar",
+  "width": 1920,
+  "height": 1080,
+  "color_model": "rgb",
+  "subsampling": "4:4:4",
+  "bit_depth": 8,
+  "range": "full",
+  "storage": "planar",
+  "output": "generated/colorbar_rgb8"
+}

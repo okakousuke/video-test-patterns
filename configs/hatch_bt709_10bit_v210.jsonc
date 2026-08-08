@@ -1,0 +1,18 @@
+{
+  // 色差の劣化が最も分かりやすい条件。1 画素幅のハッチを 4:2:2 に落として v210 で詰める。
+  // width は v210 の都合で 6 の倍数（1920 は 6 で割り切れる）。
+  "pattern": "hatch",
+  "width": 1920,
+  "height": 1080,
+  "color_model": "ycbcr",
+  "subsampling": "4:2:2",
+  "bit_depth": 10,
+  "range": "limited",
+  "matrix": "bt709",
+  "storage": "v210",
+  "pattern_options": {
+    "period": 2,
+    "orientation": "vertical"
+  },
+  "output": "generated/hatch_bt709_10bit_v210"
+}

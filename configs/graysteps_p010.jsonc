@@ -1,0 +1,16 @@
+{
+  // 16bit コンテナの上位詰め（P010）。lsb 寄せとの取り違えは絵に出ないので、
+  // manifest の alignment と、テストの往復確認で押さえる。
+  "pattern": "graysteps",
+  "width": 1920,
+  "height": 1080,
+  "color_model": "ycbcr",
+  "subsampling": "4:2:0",
+  "bit_depth": 10,
+  "range": "limited",
+  "matrix": "bt709",
+  "storage": "p010",
+  "alignment": "msb",
+  "pattern_options": { "steps": 16 },
+  "output": "generated/graysteps_p010"
+}

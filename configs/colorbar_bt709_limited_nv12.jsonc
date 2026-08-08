@@ -1,0 +1,14 @@
+{
+  // 実運用でよく見る組み合わせ。BT.709 limited range の 8bit 4:2:0 を NV12 で保存する。
+  // limited range なので、Y は 16..235 の範囲に収まる（manifest と PNG で確認できる）。
+  "pattern": "colorbar",
+  "width": 1920,
+  "height": 1080,
+  "color_model": "ycbcr",
+  "subsampling": "4:2:0",
+  "bit_depth": 8,
+  "range": "limited",
+  "matrix": "bt709",
+  "storage": "nv12",
+  "output": "generated/colorbar_bt709_limited_nv12"
+}

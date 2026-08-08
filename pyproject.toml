@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-test-patterns"
+version = "0.1.0"
+description = "映像テストパターン生成器（Python リファレンス実装）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "okakousuke" }]
+keywords = ["video", "test-pattern", "ycbcr", "colorbar", "v210", "nv12"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Multimedia :: Video",
+]
+dependencies = [
+  "numpy>=1.24",
+  "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+vtp = "vtp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/okakousuke/video-test-patterns"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

@@ -1,0 +1,13 @@
+{
+  // センサ側でよく見る 10bit バイト詰め（4 サンプル 5 バイト）。
+  // 幾何確認用の格子を、色差を持たない RGB のまま詰める。
+  "pattern": "grid",
+  "width": 1920,
+  "height": 1080,
+  "color_model": "rgb",
+  "subsampling": "4:4:4",
+  "bit_depth": 10,
+  "range": "full",
+  "storage": "mipi10",
+  "output": "generated/grid_mipi10"
+}
