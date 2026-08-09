@@ -10,8 +10,18 @@ public sealed class MainForm : Form
     private readonly Label _folderLabel = new() { Text = "フォルダ未選択", AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill, HorizontalScrollbar = true };
     private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = false };
-    private readonly Label _previewTitle = new() { Text = "RAWファイルを選択してください", AutoEllipsis = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _previewTitle = new()
+    {
+        Text = "RAWファイルを選択してください",
+        AutoEllipsis = true,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft,
+        ForeColor = Color.FromArgb(0, 92, 180),
+        Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+    };
     private readonly NumericUpDown _previewScale = new() { Minimum = 25, Maximum = 400, Value = 100, Increment = 25, Width = 72 };
+    private readonly Button _fitPreviewButton = new() { Text = "全体表示", AutoSize = true };
+    private readonly List<Button> _saveFormatButtons = [];
     private readonly Panel _previewPanel = new() { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(35, 35, 35) };
     private readonly PictureBox _preview = new() { BackColor = Color.FromArgb(35, 35, 35), SizeMode = PictureBoxSizeMode.StretchImage };
     private readonly ToolStripStatusLabel _statusLabel = new() { Text = "フォルダを選択してください。", Spring = true };
@@ -30,10 +40,13 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
 
         BuildUi();
+        _openFolderButton.Text = "フォルダを開く";
+        _savePngButton.Text = "画像保存...";
         _openFolderButton.Click += (_, _) => OpenFolder();
         _manifestList.SelectedIndexChanged += (_, _) => LoadSelectedManifest();
         _savePngButton.Click += (_, _) => SavePng();
         _previewScale.ValueChanged += (_, _) => UpdatePreviewSize();
+        _fitPreviewButton.Click += (_, _) => FitPreview();
         FormClosed += (_, _) => ReplaceBitmap(null);
     }
 
@@ -91,19 +104,40 @@ public sealed class MainForm : Form
 
     private GroupBox CreatePreviewGroup()
     {
-        var header = new TableLayoutPanel { Dock = DockStyle.Top, Height = 28, ColumnCount = 3 };
+        var header = new TableLayoutPanel { Dock = DockStyle.Top, Height = 30, ColumnCount = 10 };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.Controls.Add(_previewTitle, 0, 0);
         header.Controls.Add(new Label { Text = "表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 1, 0);
         header.Controls.Add(_previewScale, 2, 0);
+        header.Controls.Add(_fitPreviewButton, 3, 0);
+        header.Controls.Add(new Label { Text = "保存", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(8, 5, 4, 0) }, 4, 0);
+        header.Controls.Add(CreateSaveButton("PNG", ImageFormat.Png, "png"), 5, 0);
+        header.Controls.Add(CreateSaveButton("JPG", ImageFormat.Jpeg, "jpg"), 6, 0);
+        header.Controls.Add(CreateSaveButton("TIFF", ImageFormat.Tiff, "tiff"), 7, 0);
+        header.Controls.Add(CreateSaveButton("BMP", ImageFormat.Bmp, "bmp"), 8, 0);
+        header.Controls.Add(CreateSaveButton("GIF", ImageFormat.Gif, "gif"), 9, 0);
 
         _previewPanel.Controls.Add(_preview);
         var content = new Panel { Dock = DockStyle.Fill };
         content.Controls.Add(_previewPanel);
         content.Controls.Add(header);
         return WrapGroup("プレビュー（アスペクト比維持）", content);
+    }
+
+    private Button CreateSaveButton(string label, ImageFormat format, string extension)
+    {
+        var button = new Button { Text = label, AutoSize = true, Enabled = false };
+        button.Click += (_, _) => SaveAs(format, extension);
+        _saveFormatButtons.Add(button);
+        return button;
     }
 
     private void OpenFolder()
@@ -440,6 +474,21 @@ public sealed class MainForm : Form
         _ => ImageFormat.Png,
     };
 
+    private void SaveAs(ImageFormat format, string extension)
+    {
+        if (_currentBitmap is null) return;
+
+        using var dialog = new SaveFileDialog
+        {
+            Filter = $"{extension.ToUpperInvariant()} (*.{extension})|*.{extension}",
+            FileName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview") + "." + extension,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _currentBitmap.Save(dialog.FileName, format);
+        _statusLabel.Text = $"保存しました: {dialog.FileName}";
+    }
+
     private void UpdatePreviewSize()
     {
         if (_currentBitmap is null)
@@ -454,12 +503,26 @@ public sealed class MainForm : Form
             Math.Max(1, (int)Math.Round(_currentBitmap.Height * scale)));
     }
 
+    private void FitPreview()
+    {
+        if (_currentBitmap is null) return;
+
+        var availableWidth = Math.Max(1, _previewPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8);
+        var availableHeight = Math.Max(1, _previewPanel.ClientSize.Height - SystemInformation.HorizontalScrollBarHeight - 8);
+        var scale = Math.Min(availableWidth / (float)_currentBitmap.Width, availableHeight / (float)_currentBitmap.Height);
+        var percentage = Math.Clamp((decimal)(scale * 100f), _previewScale.Minimum, _previewScale.Maximum);
+        _previewScale.Value = decimal.Round(percentage, 0);
+        _previewPanel.AutoScrollPosition = Point.Empty;
+    }
+
     private void ReplaceBitmap(Bitmap? bitmap)
     {
         var old = _currentBitmap;
         _currentBitmap = bitmap;
         _preview.Image = bitmap;
-        UpdatePreviewSize();
+        foreach (var button in _saveFormatButtons) button.Enabled = bitmap is not null;
+        if (bitmap is null) UpdatePreviewSize();
+        else BeginInvoke((Action)FitPreview);
         old?.Dispose();
     }
 
