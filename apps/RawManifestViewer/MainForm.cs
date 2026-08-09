@@ -146,16 +146,19 @@ public sealed class MainForm : Form
 
     private Control CreateTopBar()
     {
-        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, AutoSize = true };
+        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, RowCount = 2, AutoSize = true };
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 390));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         bar.Controls.Add(_openFolderButton, 0, 0);
         bar.Controls.Add(_folderLabel, 1, 0);
         bar.Controls.Add(_outputFolderButton, 2, 0);
-        bar.Controls.Add(_outputFolderLabel, 3, 0);
+        bar.Controls.Add(_outputFolderLabel, 2, 1);
+        bar.SetColumnSpan(_outputFolderLabel, 2);
         bar.Controls.Add(_savePngButton, 4, 0);
         return bar;
     }
@@ -163,8 +166,8 @@ public sealed class MainForm : Form
     private Control CreateLeftPanel()
     {
         var left = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, Padding = new Padding(0, 8, 8, 0) };
-        left.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
-        left.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 43));
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 57));
         left.Controls.Add(CreateManifestBrowser(), 0, 0);
         left.Controls.Add(CreatePropertyBrowser(), 0, 1);
         return left;
@@ -207,7 +210,8 @@ public sealed class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        header.Controls.Add(_previewTitle, 0, 0);
+        // 主要パラメータは最下部のステータスバーへ集約する。
+        _previewTitle.Visible = false;
         header.Controls.Add(new Label { Text = "表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 1, 0);
         header.Controls.Add(_previewScale, 2, 0);
         header.Controls.Add(_fitPreviewButton, 3, 0);
@@ -463,10 +467,7 @@ public sealed class MainForm : Form
             var bitmap = LoadPreview(rawPath, manifest);
             ReplaceBitmap(bitmap);
             _savePngButton.Enabled = true;
-            _statusLabel.Text = "RAW: " + Path.GetFileName(rawPath);
-            _statusLabel.Text = $"表示中: {Path.GetFileName(rawPath)} ({bitmap.Width}x{bitmap.Height})";
-            _statusLabel.Text = "RAW: " + Path.GetFileName(rawPath);
-            _statusLabel.Text = Path.GetFileName(rawPath);
+            _statusLabel.Text = FormatPrimaryParameters(manifest);
         }
         catch (Exception ex)
         {
@@ -762,7 +763,8 @@ public sealed class MainForm : Form
             .Select(property => TextRenderer.MeasureText(property.DisplayName, _propertyGrid.Font).Width)
             .DefaultIfEmpty(150)
             .Max();
-        var target = Math.Min(360, widest + 30);
+        // 一番長い表示名まで左列を広げる。狭いペインでは親Panelの横スクロールを使う。
+        var target = Math.Max(180, widest + 36);
 
         var gridViewField = typeof(PropertyGrid).GetField("gridView", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var gridView = gridViewField?.GetValue(_propertyGrid);
