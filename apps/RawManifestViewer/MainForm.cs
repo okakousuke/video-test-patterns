@@ -8,7 +8,10 @@ public sealed class MainForm : Form
 {
     private readonly Button _openFolderButton = new() { Text = "フォルダを開く", AutoSize = true };
     private readonly Label _folderLabel = new() { Text = "フォルダ未選択", AutoEllipsis = true, Dock = DockStyle.Fill };
-    private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill, HorizontalScrollbar = true };
+    private readonly TreeView _manifestTree = new() { Dock = DockStyle.Fill, HideSelection = false, ShowNodeToolTips = true };
+    private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill, Visible = false };
+    private readonly ComboBox _colorModelFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+    private readonly ComboBox _sizeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
     private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
     private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = false };
@@ -47,7 +50,15 @@ public sealed class MainForm : Form
         _openFolderButton.Text = "フォルダを開く";
         _savePngButton.Text = "画像保存...";
         _openFolderButton.Click += (_, _) => OpenFolder();
-        _manifestList.SelectedIndexChanged += (_, _) => LoadSelectedManifest();
+        _manifestTree.AfterSelect += (_, _) => LoadSelectedManifest();
+        _colorModelFilter.Items.AddRange(["すべて", "RGB", "YUV / YCbCr"]);
+        _colorModelFilter.SelectedIndex = 0;
+        _sizeFilter.Items.Add("すべて");
+        _sizeFilter.SelectedIndex = 0;
+        _colorModelFilter.SelectedIndexChanged += (_, _) => RefreshManifestTree();
+        _sizeFilter.SelectedIndexChanged += (_, _) => RefreshManifestTree();
+        _outputFolderLabel.Cursor = Cursors.Hand;
+        _outputFolderLabel.Click += (_, _) => OpenOutputFolder();
         _outputFolderButton.Click += (_, _) => SelectOutputFolder();
         _savePngButton.Click += (_, _) => SavePng();
         _previewScale.ValueChanged += (_, _) => UpdatePreviewSize();
@@ -89,6 +100,7 @@ public sealed class MainForm : Form
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
         left.Controls.Add(WrapGroup("manifest一覧", _manifestList), 0, 0);
         left.Controls.Add(WrapGroup("manifestパラメータ", _propertyGrid), 0, 1);
+        left.Controls.Add(CreateManifestBrowser(), 0, 0);
         root.Controls.Add(left, 0, 1);
 
         var previewGroup = WrapGroup("プレビュー（アスペクト比維持）", _preview);
@@ -110,6 +122,20 @@ public sealed class MainForm : Form
         Padding = new Padding(8),
         Controls = { content },
     };
+
+    private GroupBox CreateManifestBrowser()
+    {
+        var filters = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, Padding = new Padding(0, 2, 0, 0), WrapContents = false };
+        filters.Controls.Add(new Label { Text = "色モデル", AutoSize = true, Padding = new Padding(0, 6, 4, 0) });
+        filters.Controls.Add(_colorModelFilter);
+        filters.Controls.Add(new Label { Text = "サイズ", AutoSize = true, Padding = new Padding(10, 6, 4, 0) });
+        filters.Controls.Add(_sizeFilter);
+
+        var content = new Panel { Dock = DockStyle.Fill };
+        content.Controls.Add(_manifestTree);
+        content.Controls.Add(filters);
+        return WrapGroup("manifest一覧（パターン別）", content);
+    }
 
     private GroupBox CreatePreviewGroup()
     {
@@ -163,6 +189,23 @@ public sealed class MainForm : Form
         _outputFolderLabel.ForeColor = Color.FromArgb(0, 92, 180);
     }
 
+    private void SetOutputFolder(string folder)
+    {
+        _outputFolder = folder;
+        _outputFolderLabel.Text = "出力先: " + folder;
+        _outputFolderLabel.ForeColor = Color.FromArgb(0, 92, 180);
+    }
+
+    private void OpenOutputFolder()
+    {
+        if (string.IsNullOrWhiteSpace(_outputFolder) || !Directory.Exists(_outputFolder)) return;
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = _outputFolder,
+            UseShellExecute = true,
+        });
+    }
+
     private void OpenFolder()
     {
         using var dialog = new FolderBrowserDialog
@@ -175,13 +218,16 @@ public sealed class MainForm : Form
             return;
 
         _folderLabel.Text = dialog.SelectedPath;
+        SetOutputFolder(dialog.SelectedPath);
         ScanManifests(dialog.SelectedPath);
+        RefreshSizeFilter();
+        RefreshManifestTree();
     }
 
     private void ScanManifests(string folder)
     {
         _entries.Clear();
-        _manifestList.Items.Clear();
+        _manifestTree.Nodes.Clear();
         ReplaceBitmap(null);
         _propertyGrid.SelectedObject = null;
         _savePngButton.Enabled = false;
@@ -193,24 +239,81 @@ public sealed class MainForm : Form
             {
                 var manifest = ManifestInfo.Load(path);
                 _entries.Add(new ManifestEntry(path, manifest));
-                _manifestList.Items.Add(new ManifestListItem(path, manifest));
             }
             catch (Exception ex)
             {
                 _entries.Add(new ManifestEntry(path, null, ex.Message));
-                _manifestList.Items.Add(new ManifestListItem(path, null, ex.Message));
             }
         }
 
         _statusLabel.Text = $"manifest {_entries.Count}件。対応形式を選択してください。";
     }
 
+    private void RefreshSizeFilter()
+    {
+        var current = _sizeFilter.SelectedItem?.ToString() ?? "すべて";
+        var sizes = _entries
+            .Where(e => e.Manifest is not null)
+            .Select(e => $"{e.Manifest!.Width} x {e.Manifest.Height}")
+            .Distinct()
+            .OrderBy(value => value)
+            .ToArray();
+
+        _sizeFilter.BeginUpdate();
+        _sizeFilter.Items.Clear();
+        _sizeFilter.Items.Add("すべて");
+        _sizeFilter.Items.AddRange(sizes);
+        _sizeFilter.SelectedItem = _sizeFilter.Items.Contains(current) ? current : "すべて";
+        _sizeFilter.EndUpdate();
+    }
+
+    private void RefreshManifestTree()
+    {
+        var colorFilter = _colorModelFilter.SelectedItem?.ToString() ?? "すべて";
+        var sizeFilter = _sizeFilter.SelectedItem?.ToString() ?? "すべて";
+        var roots = new Dictionary<string, TreeNode>(StringComparer.OrdinalIgnoreCase);
+
+        _manifestTree.BeginUpdate();
+        _manifestTree.Nodes.Clear();
+        foreach (var entry in _entries.Where(e => MatchesFilter(e, colorFilter, sizeFilter)))
+        {
+            var group = entry.Manifest?.Id ?? "読み込みエラー";
+            if (!roots.TryGetValue(group, out var root))
+            {
+                root = new TreeNode(group);
+                roots.Add(group, root);
+                _manifestTree.Nodes.Add(root);
+            }
+
+            var node = new TreeNode(ManifestEntryText(entry)) { Tag = entry, ToolTipText = entry.Error ?? entry.Path };
+            root.Nodes.Add(node);
+        }
+        foreach (TreeNode root in _manifestTree.Nodes) root.Expand();
+        _manifestTree.EndUpdate();
+    }
+
+    private static bool MatchesFilter(ManifestEntry entry, string colorFilter, string sizeFilter)
+    {
+        if (entry.Manifest is null) return colorFilter == "すべて" && sizeFilter == "すべて";
+        var manifest = entry.Manifest;
+        var colorMatches = colorFilter == "すべて"
+            || (colorFilter == "YUV / YCbCr" && string.Equals(manifest.ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(manifest.ColorModel, colorFilter, StringComparison.OrdinalIgnoreCase);
+        var sizeMatches = sizeFilter == "すべて" || sizeFilter == $"{manifest.Width} x {manifest.Height}";
+        return colorMatches && sizeMatches;
+    }
+
+    private static string ManifestEntryText(ManifestEntry entry)
+    {
+        if (entry.Manifest is null) return Path.GetFileName(entry.Path);
+        var manifest = entry.Manifest;
+        return $"{Path.GetFileName(manifest.Raw.Path)}  [{manifest.ColorModel}, {manifest.Storage}, {manifest.BitDepth}bit, {manifest.Width}x{manifest.Height}]";
+    }
+
     private void LoadSelectedManifest()
     {
-        if (_manifestList.SelectedIndex < 0 || _manifestList.SelectedIndex >= _entries.Count)
+        if (_manifestTree.SelectedNode?.Tag is not ManifestEntry entry)
             return;
-
-        var entry = _entries[_manifestList.SelectedIndex];
         _currentManifestPath = entry.Path;
 
         if (entry.Manifest is null)
@@ -589,8 +692,8 @@ public sealed class MainForm : Form
 
     private sealed class PreviewCanvasPanel : Panel
     {
-        private static readonly Color TileA = Color.FromArgb(27, 34, 48);
-        private static readonly Color TileB = Color.FromArgb(51, 38, 70);
+        private static readonly Color TileA = Color.FromArgb(47, 50, 57);
+        private static readonly Color TileB = Color.FromArgb(54, 50, 61);
         private const int TileSize = 16;
 
         public PreviewCanvasPanel()
