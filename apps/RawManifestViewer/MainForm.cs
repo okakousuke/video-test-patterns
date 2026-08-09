@@ -14,8 +14,10 @@ public sealed class MainForm : Form
     private readonly ComboBox _sizeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
     private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
     private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
-    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = true, ToolbarVisible = false, Width = 760, HelpBackColor = Color.FromArgb(248, 250, 252) };
+    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = false, ToolbarVisible = false, Width = 760 };
     private Panel? _propertyViewport;
+    private readonly Label _parameterHelpTitle = new() { AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
+    private readonly Label _parameterHelpText = new() { AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly Label _previewTitle = new()
     {
         Text = "RAWファイルを選択してください",
@@ -25,7 +27,7 @@ public sealed class MainForm : Form
         ForeColor = Color.FromArgb(0, 92, 180),
         Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
     };
-    private readonly NumericUpDown _previewScale = new() { Minimum = 10, Maximum = 400, Value = 100, Increment = 25, Width = 72 };
+    private readonly PreviewScaleUpDown _previewScale = new() { Minimum = 10, Maximum = 400, Value = 100, Width = 72 };
     private readonly Button _fitPreviewButton = new() { Text = "全体表示", AutoSize = true };
     private readonly List<Button> _saveFormatButtons = [];
     private readonly PreviewCanvasPanel _previewPanel = new() { Dock = DockStyle.Fill, AutoScroll = true };
@@ -69,6 +71,7 @@ public sealed class MainForm : Form
         _savePngButton.Click += (_, _) => SavePng();
         _saveRawButton.Click += (_, _) => SaveRawCopy();
         _previewScale.ValueChanged += (_, _) => OnPreviewScaleChanged();
+        _propertyGrid.SelectedGridItemChanged += (_, e) => UpdateParameterHelp(e.NewSelection?.PropertyDescriptor);
         _fitPreviewButton.Click += (_, _) => FitPreview();
         KeyDown += MainFormKeyDown;
         Shown += (_, _) => RestoreLastFolder();
@@ -83,12 +86,12 @@ public sealed class MainForm : Form
         _toolTip.SetToolTip(_outputFolderButton, "画像の保存先フォルダを変更します。");
         _toolTip.SetToolTip(_outputFolderLabel, "現在の保存先です。クリックするとエクスプローラーで開きます。");
         _toolTip.SetToolTip(_savePngButton, "現在のプレビューをPNG・JPEG・TIFF・BMP・GIFの圧縮画像として保存します。");
-        _toolTip.SetToolTip(_saveRawButton, "選択中のRAWファイルを、指定した出力先フォルダへそのままコピーします。");
+        _toolTip.SetToolTip(_saveRawButton, "選択中のRAWファイルを、保存先とファイル名を指定してそのままコピーします。");
         _toolTip.SetToolTip(_manifestTree, "パターン名ごとにmanifestを分類しています。項目を選ぶとプレビューします。");
         _toolTip.SetToolTip(_colorModelFilter, "RGBまたはYUV / YCbCr系で一覧を絞り込みます。");
         _toolTip.SetToolTip(_sizeFilter, "画像サイズで一覧を絞り込みます。");
         _toolTip.SetToolTip(_propertyGrid, "manifestに記録された生成条件です。横スクロールで長い値を確認できます。");
-        _toolTip.SetToolTip(_previewScale, "表示倍率です。50%以下は10%刻み、それより大きい値は25%刻みです。");
+        _toolTip.SetToolTip(_previewScale, "表示倍率です。10 / 20 / 25 / 30 / 40 / 50 / 75 / 100%、以降は100〜200%を25%刻み、200%超を50%刻みで選べます。");
         _toolTip.SetToolTip(_fitPreviewButton, "画像全体が見える倍率へ戻し、中央に配置します。");
         _toolTip.SetToolTip(_previewPanel, "全体表示では中央配置、倍率を手動変更した場合は左上起点で表示します。");
     }
@@ -194,7 +197,21 @@ public sealed class MainForm : Form
             AdjustPropertyGridColumns();
         };
         viewport.Controls.Add(_propertyGrid);
-        return WrapGroup("⚙ manifestパラメータ  [?]", viewport);
+
+        var helpPanel = new Panel { Dock = DockStyle.Bottom, Height = 66, BackColor = Color.FromArgb(248, 250, 252), Padding = new Padding(6, 4, 6, 4) };
+        var helpIcon = new Label { Text = "?", Dock = DockStyle.Left, Width = 24, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.FromArgb(0, 92, 180), Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
+        var helpTextPanel = new Panel { Dock = DockStyle.Fill };
+        _parameterHelpTitle.Dock = DockStyle.Top;
+        _parameterHelpText.Text = "項目を選ぶと、RAWの解釈に必要な技術的な補足を表示します。";
+        helpTextPanel.Controls.Add(_parameterHelpText);
+        helpTextPanel.Controls.Add(_parameterHelpTitle);
+        helpPanel.Controls.Add(helpTextPanel);
+        helpPanel.Controls.Add(helpIcon);
+
+        var content = new Panel { Dock = DockStyle.Fill };
+        content.Controls.Add(viewport);
+        content.Controls.Add(helpPanel);
+        return WrapGroup("⚙ manifestパラメータ", content);
     }
 
     private GroupBox CreateManifestBrowser()
@@ -223,7 +240,7 @@ public sealed class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         // 主要パラメータは最下部のステータスバーへ集約する。
         _previewTitle.Visible = false;
-        header.Controls.Add(new Label { Text = "表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 0, 0);
+        header.Controls.Add(new Label { Text = "🔍 表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 0, 0);
         header.Controls.Add(_previewScale, 1, 0);
         header.Controls.Add(_fitPreviewButton, 2, 0);
         header.Controls.Add(new Label { Text = "保存", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(8, 5, 4, 0) }, 3, 0);
@@ -237,7 +254,7 @@ public sealed class MainForm : Form
         var content = new Panel { Dock = DockStyle.Fill };
         content.Controls.Add(_previewPanel);
         content.Controls.Add(header);
-        return WrapGroup("プレビュー（アスペクト比維持）", content);
+        return WrapGroup("▣ プレビュー（アスペクト比維持）", content);
     }
 
     private Button CreateSaveButton(string label, ImageFormat format, string extension)
@@ -363,6 +380,7 @@ public sealed class MainForm : Form
         _manifestTree.Nodes.Clear();
         ReplaceBitmap(null);
         _propertyGrid.SelectedObject = null;
+        UpdateParameterHelp(null);
         _savePngButton.Enabled = false;
         _saveRawButton.Enabled = false;
         _currentRawPath = null;
@@ -455,6 +473,7 @@ public sealed class MainForm : Form
         {
             ReplaceBitmap(null);
             _propertyGrid.SelectedObject = null;
+            UpdateParameterHelp(null);
             _savePngButton.Enabled = false;
             _saveRawButton.Enabled = false;
             _currentRawPath = null;
@@ -520,6 +539,31 @@ public sealed class MainForm : Form
 
     private static string FormatPrimaryParameters(ManifestInfo manifest) =>
         $"色モデル: {manifest.ColorModel} / 色差サブサンプリング: {manifest.Subsampling} / ビット深度: {manifest.BitDepth}bit / 格納形式: {manifest.Storage} / 画像サイズ: {manifest.Width} x {manifest.Height}";
+
+    private void UpdateParameterHelp(System.ComponentModel.PropertyDescriptor? descriptor)
+    {
+        if (descriptor is null)
+        {
+            _parameterHelpTitle.Text = "? パラメータの説明";
+            _parameterHelpText.Text = "項目を選ぶと、RAWの解釈に必要な技術的な補足を表示します。";
+            return;
+        }
+
+        _parameterHelpTitle.Text = "? " + descriptor.DisplayName;
+        _parameterHelpText.Text = descriptor.Name switch
+        {
+            "Size" => "RAWには画像サイズの情報が含まれません。幅または高さを誤ると、行境界がずれて復元結果全体が崩れます。",
+            "Subsampling" => "4:4:4は色差を各画素に持ちます。4:2:2は水平方向を半分、4:2:0は水平・垂直方向を半分に間引くため、色差面のサイズと読み出し位置が変わります。",
+            "Range" => "fullは量子化値全域を使います。limitedは放送系で一般的な有効範囲を使うため、Y'CbCrからRGBへ戻す際にはrangeを一致させる必要があります。",
+            "Matrix" => "bt601・bt709・bt2020はRGBとY'CbCrの変換係数です。matrixが異なると同じRAWでも色相・明るさが変わります。",
+            "Storage" => "planarは成分ごとに面を分離し、packedは画素または画素対ごとに詰めます。NV12/P010はY面の後ろに色差を交互配置する4:2:0形式です。",
+            "Alignment" => "10bitを16bitコンテナに置く場合、lsbは下位10bit、msbは上位10bitを使います。P010は通常msbです。MIPI10とv210は別のパック規則です。",
+            "BitDepth" => "1サンプルに割り当てる有効ビット数です。10bitは8bitより階調が細かい一方、格納方法ごとに16bitコンテナや専用パック形式を確認する必要があります。",
+            "RawBytes" => "ファイルサイズです。画像サイズ・サブサンプリング・ビット深度・格納形式から期待値を見積もり、欠損や形式指定の不一致を検出できます。",
+            "Sha256" => "RAWの内容から計算したハッシュ値です。同一性の確認や、生成後のファイルが意図せず変わっていないかの検証に使えます。",
+            _ => descriptor.Description,
+        };
+    }
 
     private static Bitmap LoadPreview(string rawPath, ManifestInfo manifest)
     {
@@ -746,22 +790,22 @@ public sealed class MainForm : Form
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_outputFolder) || !Directory.Exists(_outputFolder))
+        using var dialog = new SaveFileDialog
         {
-            _statusLabel.Text = "出力先フォルダを指定してください。";
-            return;
-        }
+            Title = "RAWファイルのコピー先を指定",
+            Filter = "RAWファイル (*.raw)|*.raw|すべてのファイル (*.*)|*.*",
+            FileName = Path.GetFileName(_currentRawPath),
+            InitialDirectory = Directory.Exists(_outputFolder) ? _outputFolder : Path.GetDirectoryName(_currentRawPath),
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
-        var destination = Path.Combine(_outputFolder, Path.GetFileName(_currentRawPath));
+        var destination = dialog.FileName;
         if (string.Equals(Path.GetFullPath(_currentRawPath), Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
         {
-            _statusLabel.Text = "出力先がRAWファイルと同じです。別の出力先を指定してください。";
+            _statusLabel.Text = "コピー先が元のRAWファイルと同じです。別の場所または名前を指定してください。";
             return;
         }
-
-        if (File.Exists(destination)
-            && MessageBox.Show(this, $"同名のRAWファイルを上書きしますか？\n{destination}", "上書き確認", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
-            return;
 
         try
         {
@@ -821,7 +865,7 @@ public sealed class MainForm : Form
             .DefaultIfEmpty(150)
             .Max();
         // 一番長い表示名まで左列を広げ、通常の値は横スクロールせず見える幅を確保する。
-        var target = Math.Min(155, widest + 14);
+        var target = Math.Min(135, widest + 8);
         var viewportWidth = _propertyViewport?.ClientSize.Width ?? 0;
         _propertyGrid.Width = Math.Max(viewportWidth, target + 300);
 
@@ -833,7 +877,6 @@ public sealed class MainForm : Form
 
     private void OnPreviewScaleChanged()
     {
-        _previewScale.Increment = _previewScale.Value < 20 ? 10 : 25;
         UpdatePreviewSize();
     }
 
@@ -941,6 +984,23 @@ public sealed class MainForm : Form
             if (Width < 2 || Height < 2) return;
             using var pen = new Pen(BorderColor, 1);
             pe.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        }
+    }
+
+    private sealed class PreviewScaleUpDown : NumericUpDown
+    {
+        private static readonly decimal[] Steps = [10, 20, 25, 30, 40, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400];
+
+        public override void UpButton()
+        {
+            var next = Steps.FirstOrDefault(step => step > Value);
+            Value = next == 0 ? Maximum : Math.Min(next, Maximum);
+        }
+
+        public override void DownButton()
+        {
+            var previous = Steps.LastOrDefault(step => step < Value);
+            Value = previous == 0 ? Minimum : Math.Max(previous, Minimum);
         }
     }
 }
