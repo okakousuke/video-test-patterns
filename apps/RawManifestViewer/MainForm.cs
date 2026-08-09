@@ -92,8 +92,8 @@ public sealed class MainForm : Form
         folderBar.Controls.Add(_outputFolderButton, 2, 0);
         folderBar.Controls.Add(_outputFolderLabel, 3, 0);
         folderBar.Controls.Add(_savePngButton, 4, 0);
-        root.Controls.Add(folderBar, 0, 0);
-        root.SetColumnSpan(folderBar, 2);
+        root.Controls.Add(CreateTopBar(), 0, 0);
+        root.SetColumnSpan(root.GetControlFromPosition(0, 0)!, 2);
 
         var left = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, Padding = new Padding(0, 8, 8, 0) };
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
@@ -101,7 +101,7 @@ public sealed class MainForm : Form
         left.Controls.Add(WrapGroup("manifest一覧", _manifestList), 0, 0);
         left.Controls.Add(WrapGroup("manifestパラメータ", _propertyGrid), 0, 1);
         left.Controls.Add(CreateManifestBrowser(), 0, 0);
-        root.Controls.Add(left, 0, 1);
+        root.Controls.Add(CreateLeftPanel(), 0, 1);
 
         var previewGroup = WrapGroup("プレビュー（アスペクト比維持）", _preview);
         previewGroup.Padding = new Padding(4, 20, 4, 4);
@@ -122,6 +122,32 @@ public sealed class MainForm : Form
         Padding = new Padding(8),
         Controls = { content },
     };
+
+    private Control CreateTopBar()
+    {
+        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, AutoSize = true };
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 390));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.Controls.Add(_openFolderButton, 0, 0);
+        bar.Controls.Add(_folderLabel, 1, 0);
+        bar.Controls.Add(_outputFolderButton, 2, 0);
+        bar.Controls.Add(_outputFolderLabel, 3, 0);
+        bar.Controls.Add(_savePngButton, 4, 0);
+        return bar;
+    }
+
+    private Control CreateLeftPanel()
+    {
+        var left = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, Padding = new Padding(0, 8, 8, 0) };
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        left.Controls.Add(CreateManifestBrowser(), 0, 0);
+        left.Controls.Add(WrapGroup("manifestパラメータ", _propertyGrid), 0, 1);
+        return left;
+    }
 
     private GroupBox CreateManifestBrowser()
     {
@@ -640,6 +666,7 @@ public sealed class MainForm : Form
         _preview.Size = new Size(
             Math.Max(1, (int)Math.Round(_currentBitmap.Width * scale)),
             Math.Max(1, (int)Math.Round(_currentBitmap.Height * scale)));
+        _preview.Location = Point.Empty;
     }
 
     private void FitPreview()
@@ -652,6 +679,14 @@ public sealed class MainForm : Form
         var percentage = Math.Clamp((decimal)(scale * 100f), _previewScale.Minimum, _previewScale.Maximum);
         _previewScale.Value = decimal.Round(percentage, 0);
         _previewPanel.AutoScrollPosition = Point.Empty;
+        CenterPreview();
+    }
+
+    private void CenterPreview()
+    {
+        var x = Math.Max(0, (_previewPanel.ClientSize.Width - _preview.Width) / 2);
+        var y = Math.Max(0, (_previewPanel.ClientSize.Height - _preview.Height) / 2);
+        _preview.Location = new Point(x, y);
     }
 
     private void ReplaceBitmap(Bitmap? bitmap)
