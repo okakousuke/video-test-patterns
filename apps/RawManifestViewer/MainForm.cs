@@ -146,6 +146,14 @@ public sealed class MainForm : Form
         var manifest = entry.Manifest;
         _propertyGrid.SelectedObject = ToDisplay(manifest, entry.Path);
 
+        if (!manifest.SupportsRgb8Preview)
+        {
+            ReplaceBitmap(null);
+            _savePngButton.Enabled = false;
+            _statusLabel.Text = $"読み込み済み（プレビュー未対応）: {manifest.ColorModel}, {manifest.BitDepth}bit, {manifest.Storage}";
+            return;
+        }
+
         try
         {
             var rawPath = manifest.ResolveRawPath(entry.Path);
@@ -165,14 +173,18 @@ public sealed class MainForm : Form
     private static ManifestDisplay ToDisplay(ManifestInfo manifest, string path) => new()
     {
         Id = manifest.Id ?? Path.GetFileNameWithoutExtension(path),
-        RawFile = manifest.RawFile ?? "",
+        RawFile = manifest.Raw.Path,
         Size = $"{manifest.Width} x {manifest.Height}",
         ColorModel = manifest.ColorModel ?? "",
         ChannelOrder = manifest.ChannelOrder ?? "",
+        Subsampling = manifest.Subsampling ?? "",
         BitDepth = manifest.BitDepth.ToString(),
+        Range = manifest.Range ?? "",
+        Matrix = manifest.Matrix ?? "",
         Storage = manifest.Storage ?? "",
-        StrideBytes = manifest.EffectiveStrideBytes.ToString(),
-        Sha256 = manifest.Sha256 ?? "未指定",
+        Alignment = manifest.Alignment ?? "",
+        RawBytes = manifest.RawBytes.ToString(),
+        Sha256 = manifest.Raw.Sha256 ?? "未指定",
     };
 
     private static Bitmap LoadRgb8(string rawPath, ManifestInfo manifest)
@@ -180,7 +192,11 @@ public sealed class MainForm : Form
         if (!File.Exists(rawPath))
             throw new FileNotFoundException("manifestが指すRAWファイルがありません。", rawPath);
 
-        var expectedMinimum = checked(manifest.EffectiveStrideBytes * manifest.Height);
+        var strideBytes = checked(manifest.Width * 3);
+        var isPlanar = string.Equals(manifest.Storage, "planar", StringComparison.OrdinalIgnoreCase);
+        var expectedMinimum = isPlanar
+            ? checked(manifest.Width * manifest.Height * 3)
+            : checked(strideBytes * manifest.Height);
         var fileLength = new FileInfo(rawPath).Length;
         if (fileLength < expectedMinimum)
             throw new InvalidDataException($"RAWサイズが不足しています: {fileLength} < {expectedMinimum} bytes");
@@ -191,21 +207,20 @@ public sealed class MainForm : Form
 
         try
         {
-            var row = new byte[manifest.EffectiveStrideBytes];
-            using var stream = File.OpenRead(rawPath);
+            var data = File.ReadAllBytes(rawPath);
             var bgr = string.Equals(manifest.ChannelOrder, "BGR", StringComparison.OrdinalIgnoreCase);
 
             for (var y = 0; y < manifest.Height; y++)
             {
-                stream.ReadExactly(row);
                 var destination = bitmapData.Scan0 + y * bitmapData.Stride;
                 for (var x = 0; x < manifest.Width; x++)
                 {
-                    var source = x * 3;
+                    var pixel = y * manifest.Width + x;
+                    var source = isPlanar ? pixel : pixel * 3;
                     var target = destination + x * 3;
-                    var r = row[source + (bgr ? 2 : 0)];
-                    var g = row[source + 1];
-                    var b = row[source + (bgr ? 0 : 2)];
+                    var r = isPlanar ? data[source] : data[source + (bgr ? 2 : 0)];
+                    var g = isPlanar ? data[source + manifest.Width * manifest.Height] : data[source + 1];
+                    var b = isPlanar ? data[source + 2 * manifest.Width * manifest.Height] : data[source + (bgr ? 0 : 2)];
                     Marshal.WriteByte(target, b);
                     Marshal.WriteByte(target + 1, g);
                     Marshal.WriteByte(target + 2, r);
