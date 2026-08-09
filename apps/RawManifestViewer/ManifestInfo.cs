@@ -110,41 +110,42 @@ public sealed class ManifestFile
 
 public sealed class ManifestDisplay
 {
+    [Browsable(false)]
     [DisplayName("パターン名")]
     [Description("生成したテストパターンの名前です。manifestのparameters.patternに対応します。")]
     public string Id { get; init; } = "";
     [DisplayName("RAWファイル")]
     [Description("実際に読み込むRAWファイルのパスです。manifestのfilesからkind=rawを選択します。")]
     public string RawFile { get; init; } = "";
-    [DisplayName("画像サイズ")]
-    [Description("RAW画像の幅と高さです。")]
+    [DisplayName("画像サイズ (W × H)")]
+    [Description("RAW画像の幅Wと高さHです。RAWにはヘッダーがないため、この値を誤ると行境界がずれて復元結果全体が崩れます。")]
     public string Size { get; init; } = "";
-    [DisplayName("色モデル")]
-    [Description("画素値の色表現です。現在はRGB 8bitのプレビューに対応しています。")]
+    [DisplayName("色モデル (Color Model)")]
+    [Description("画素値の色表現です。RGBは3原色、Y'CbCrは輝度Y'と色差Cb/Crで表します。色モデルにより、各サンプルの解釈とRGB化の処理が変わります。")]
     public string ColorModel { get; init; } = "";
-    [DisplayName("チャンネル順")]
+    [DisplayName("チャンネル順序 (Channel Order)")]
     [Description("RGB各チャンネルの並び順です。packed形式で使用します。")]
     public string ChannelOrder { get; init; } = "";
-    [DisplayName("色差サブサンプリング")]
-    [Description("輝度と色差のサンプル数の比率です。4:4:4、4:2:2、4:2:0などで表します。")]
+    [DisplayName("色差サブサンプリング (Chroma Sampling)")]
+    [Description("輝度Y'に対する色差Cb/Crのサンプル密度です。4:4:4は各画素、4:2:2は水平方向を半分、4:2:0は水平・垂直方向を半分にします。")]
     public string Subsampling { get; init; } = "";
-    [DisplayName("ビット深度")]
-    [Description("1サンプルあたりの有効ビット数です。8bitや10bitなどで表します。")]
+    [DisplayName("量子化ビット深度 (Bit Depth)")]
+    [Description("1サンプルあたりの有効ビット数です。10bitは8bitより細かい階調を表せますが、16bitコンテナや専用パック形式での格納方法も確認します。")]
     public string BitDepth { get; init; } = "";
-    [DisplayName("レンジ")]
-    [Description("画素値の使用範囲です。fullは全域、limitedは映像信号向けの制限範囲です。")]
+    [DisplayName("信号レンジ (Range)")]
+    [Description("量子化値の有効範囲です。fullは全域、limitedは放送系で一般的な制限範囲です。Y'CbCrをRGBへ戻す際はmatrixと合わせて一致させます。")]
     public string Range { get; init; } = "";
-    [DisplayName("マトリクス")]
-    [Description("RGBとY'CbCrの相互変換に使う係数の規格名です。")]
+    [DisplayName("色変換マトリクス (Matrix)")]
+    [Description("RGBとY'CbCrの相互変換に使う係数です。bt601はSD系、bt709はHD系、bt2020はUHD系の代表例です。指定が違うと色相や明るさが変わります。")]
     public string Matrix { get; init; } = "";
-    [DisplayName("格納形式")]
-    [Description("RAWファイル内でのサンプルの並び方です。planar、packed、NV12などがあります。")]
+    [DisplayName("メモリ格納形式 (Storage)")]
+    [Description("RAW内でのサンプルの並び方です。planarは成分ごとに面を分け、packedは画素または画素対ごとに詰めます。NV12/P010はY面の後に色差面を置く4:2:0形式です。")]
     public string Storage { get; init; } = "";
-    [DisplayName("アライメント")]
-    [Description("10bitなどをコンテナへ格納するときのビット詰め方向です。")]
+    [DisplayName("ビット配置 (Alignment)")]
+    [Description("10bitを16bitコンテナに置く場合の有効ビット位置です。lsbは下位10bit、msbは上位10bitを使います。P010は通常msb配置です。")]
     public string Alignment { get; init; } = "";
-    [DisplayName("RAWバイト数")]
-    [Description("生成されたRAWファイルのサイズです。")]
+    [DisplayName("RAWファイルサイズ")]
+    [Description("RAWの総バイト数です。画像サイズ・色差サブサンプリング・ビット深度・格納形式から期待値を見積もり、欠損や形式指定の不一致を検出できます。")]
     public string RawBytes { get; init; } = "";
     [DisplayName("RAW SHA-256")]
     [Description("RAWファイル内容のハッシュ値です。ファイル同一性の確認に使います。")]

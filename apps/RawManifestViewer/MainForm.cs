@@ -18,6 +18,17 @@ public sealed class MainForm : Form
     private Panel? _propertyViewport;
     private readonly Label _parameterHelpTitle = new() { AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
     private readonly Label _parameterHelpText = new() { AutoEllipsis = true, Dock = DockStyle.Fill };
+    private readonly Label _patternBadge = new()
+    {
+        Dock = DockStyle.Top,
+        Height = 28,
+        Padding = new Padding(8, 5, 8, 4),
+        BackColor = Color.FromArgb(232, 242, 254),
+        ForeColor = Color.FromArgb(0, 72, 140),
+        BorderStyle = BorderStyle.FixedSingle,
+        Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+        Text = "パターン名: 未選択",
+    };
     private readonly Label _previewTitle = new()
     {
         Text = "RAWファイルを選択してください",
@@ -56,7 +67,7 @@ public sealed class MainForm : Form
         _outputFolderButton.Text = "出力先...";
         _openFolderButton.Text = "📁 フォルダを開く";
         _savePngButton.Text = "🖼 圧縮画像として保存...";
-        _saveRawButton.Text = "📄 RAWを出力先へコピー";
+        _saveRawButton.Text = "💾 RAWファイルを指定フォルダへ保存...";
         _openFolderButton.Click += (_, _) => OpenFolder();
         _manifestTree.AfterSelect += (_, _) => LoadSelectedManifest();
         _colorModelFilter.Items.AddRange(["すべて", "RGB", "YUV / YCbCr"]);
@@ -86,7 +97,7 @@ public sealed class MainForm : Form
         _toolTip.SetToolTip(_outputFolderButton, "画像の保存先フォルダを変更します。");
         _toolTip.SetToolTip(_outputFolderLabel, "現在の保存先です。クリックするとエクスプローラーで開きます。");
         _toolTip.SetToolTip(_savePngButton, "現在のプレビューをPNG・JPEG・TIFF・BMP・GIFの圧縮画像として保存します。");
-        _toolTip.SetToolTip(_saveRawButton, "選択中のRAWファイルを、保存先とファイル名を指定してそのままコピーします。");
+        _toolTip.SetToolTip(_saveRawButton, "選択中のRAWファイルを、保存先フォルダとファイル名を指定してそのまま保存します。");
         _toolTip.SetToolTip(_manifestTree, "パターン名ごとにmanifestを分類しています。項目を選ぶとプレビューします。");
         _toolTip.SetToolTip(_colorModelFilter, "RGBまたはYUV / YCbCr系で一覧を絞り込みます。");
         _toolTip.SetToolTip(_sizeFilter, "画像サイズで一覧を絞り込みます。");
@@ -211,6 +222,7 @@ public sealed class MainForm : Form
         var content = new Panel { Dock = DockStyle.Fill };
         content.Controls.Add(viewport);
         content.Controls.Add(helpPanel);
+        content.Controls.Add(_patternBadge);
         return WrapGroup("⚙ manifestパラメータ", content);
     }
 
@@ -268,7 +280,15 @@ public sealed class MainForm : Form
             "gif" => "Ctrl+5",
             _ => "",
         };
-        var button = new Button { Text = $"{label} ({shortcut})", AutoSize = true, Enabled = false };
+        var button = new Button
+        {
+            Text = $"{label} ({shortcut})",
+            AutoSize = true,
+            Enabled = false,
+            BackColor = Color.FromArgb(235, 245, 255),
+            FlatStyle = FlatStyle.Flat,
+        };
+        button.FlatAppearance.BorderColor = Color.FromArgb(166, 202, 240);
         button.Click += (_, _) => SaveAs(format, extension);
         _toolTip.SetToolTip(button, $"プレビューを{label}形式で保存します。ショートカット: {shortcut}");
         _saveFormatButtons.Add(button);
@@ -381,6 +401,7 @@ public sealed class MainForm : Form
         ReplaceBitmap(null);
         _propertyGrid.SelectedObject = null;
         UpdateParameterHelp(null);
+        _patternBadge.Text = "パターン名: 未選択";
         _savePngButton.Enabled = false;
         _saveRawButton.Enabled = false;
         _currentRawPath = null;
@@ -474,6 +495,7 @@ public sealed class MainForm : Form
             ReplaceBitmap(null);
             _propertyGrid.SelectedObject = null;
             UpdateParameterHelp(null);
+            _patternBadge.Text = "パターン名: 読み込み不可";
             _savePngButton.Enabled = false;
             _saveRawButton.Enabled = false;
             _currentRawPath = null;
@@ -484,6 +506,7 @@ public sealed class MainForm : Form
 
         var manifest = entry.Manifest;
         _propertyGrid.SelectedObject = ToDisplay(manifest, entry.Path);
+        _patternBadge.Text = "パターン名: " + (manifest.Id ?? "未指定");
         BeginInvoke((Action)AdjustPropertyGridColumns);
         _previewTitle.Text = FormatPrimaryParameters(manifest);
 
@@ -521,7 +544,7 @@ public sealed class MainForm : Form
     {
         Id = manifest.Id ?? Path.GetFileNameWithoutExtension(path),
         RawFile = manifest.Raw.Path,
-        Size = $"{manifest.Width} x {manifest.Height}",
+        Size = $"{manifest.Width} × {manifest.Height} px (W × H)",
         ColorModel = manifest.ColorModel ?? "",
         ChannelOrder = ValueOrNote(manifest.ChannelOrder, "この格納形式では未使用"),
         Subsampling = manifest.Subsampling ?? "",
@@ -530,12 +553,23 @@ public sealed class MainForm : Form
         Matrix = ValueOrNote(manifest.Matrix, "この色モデルでは未使用"),
         Storage = manifest.Storage ?? "",
         Alignment = ValueOrNote(manifest.Alignment, "この格納形式では未使用"),
-        RawBytes = manifest.RawBytes.ToString(),
+        RawBytes = FormatBytes(manifest.RawBytes),
         Sha256 = manifest.Raw.Sha256 ?? "未指定",
     };
 
     private static string ValueOrNote(string? value, string note) =>
         string.IsNullOrWhiteSpace(value) ? $"（{note}）" : value;
+
+    private static string FormatBytes(long bytes)
+    {
+        const double kilobyte = 1024d;
+        const double megabyte = kilobyte * 1024d;
+        return bytes >= megabyte
+            ? $"{bytes:N0} bytes ({bytes / megabyte:N2} MB)"
+            : bytes >= kilobyte
+                ? $"{bytes:N0} bytes ({bytes / kilobyte:N2} KB)"
+                : $"{bytes:N0} bytes";
+    }
 
     private static string FormatPrimaryParameters(ManifestInfo manifest) =>
         $"色モデル: {manifest.ColorModel} / 色差サブサンプリング: {manifest.Subsampling} / ビット深度: {manifest.BitDepth}bit / 格納形式: {manifest.Storage} / 画像サイズ: {manifest.Width} x {manifest.Height}";
