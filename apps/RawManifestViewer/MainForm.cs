@@ -14,7 +14,7 @@ public sealed class MainForm : Form
     private readonly ComboBox _sizeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
     private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
     private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
-    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = false, ToolbarVisible = false, Width = 760 };
+    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = false, ToolbarVisible = false, Width = 760, PropertySort = PropertySort.NoSort };
     private Panel? _propertyViewport;
     private readonly Label _parameterHelpTitle = new() { AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
     private readonly Label _parameterHelpText = new() { AutoEllipsis = true, Dock = DockStyle.Fill };
@@ -551,10 +551,11 @@ public sealed class MainForm : Form
         BitDepth = manifest.BitDepth.ToString(),
         Range = ValueOrNote(manifest.Range, "この色モデルでは未使用"),
         Matrix = ValueOrNote(manifest.Matrix, "この色モデルでは未使用"),
-        Storage = manifest.Storage ?? "",
-        Alignment = ValueOrNote(manifest.Alignment, "この格納形式では未使用"),
         RawBytes = FormatBytes(manifest.RawBytes),
         Sha256 = manifest.Raw.Sha256 ?? "未指定",
+        ChannelOrderDisplay = ValueOrNote(manifest.ChannelOrder, "この格納形式では未使用"),
+        AlignmentDisplay = ValueOrNote(manifest.Alignment, "この格納形式では未使用"),
+        StorageDisplay = manifest.Storage ?? "",
     };
 
     private static string ValueOrNote(string? value, string note) =>
@@ -586,12 +587,12 @@ public sealed class MainForm : Form
         _parameterHelpTitle.Text = "? " + descriptor.DisplayName;
         _parameterHelpText.Text = descriptor.Name switch
         {
-            "Size" => "RAWには画像サイズの情報が含まれません。幅または高さを誤ると、行境界がずれて復元結果全体が崩れます。",
+            "Size" => "英語名: Width × Height。RAWには画像サイズの情報が含まれません。幅または高さを誤ると、行境界がずれて復元結果全体が崩れます。",
             "Subsampling" => "4:4:4は色差を各画素に持ちます。4:2:2は水平方向を半分、4:2:0は水平・垂直方向を半分に間引くため、色差面のサイズと読み出し位置が変わります。",
-            "Range" => "fullは量子化値全域を使います。limitedは放送系で一般的な有効範囲を使うため、Y'CbCrからRGBへ戻す際にはrangeを一致させる必要があります。",
-            "Matrix" => "bt601・bt709・bt2020はRGBとY'CbCrの変換係数です。matrixが異なると同じRAWでも色相・明るさが変わります。",
-            "Storage" => "planarは成分ごとに面を分離し、packedは画素または画素対ごとに詰めます。NV12/P010はY面の後ろに色差を交互配置する4:2:0形式です。",
-            "Alignment" => "10bitを16bitコンテナに置く場合、lsbは下位10bit、msbは上位10bitを使います。P010は通常msbです。MIPI10とv210は別のパック規則です。",
+            "Range" => "英語名: Range。fullは量子化値全域を使います。limitedは放送系で一般的な有効範囲を使うため、Y'CbCrからRGBへ戻す際にはrangeを一致させる必要があります。",
+            "Matrix" => "英語名: Matrix。bt601・bt709・bt2020はRGBとY'CbCrの変換係数です。matrixが異なると同じRAWでも色相・明るさが変わります。",
+            "Storage" => "英語名: Storage。planarは成分ごとに面を分離し、packedは画素または画素対ごとに詰めます。NV12/P010はY面の後ろに色差を交互配置する4:2:0形式です。",
+            "Alignment" => "英語名: Alignment。10bitを16bitコンテナに置く場合、lsbは下位10bit、msbは上位10bitを使います。P010は通常msbです。MIPI10とv210は別のパック規則です。",
             "BitDepth" => "1サンプルに割り当てる有効ビット数です。10bitは8bitより階調が細かい一方、格納方法ごとに16bitコンテナや専用パック形式を確認する必要があります。",
             "RawBytes" => "ファイルサイズです。画像サイズ・サブサンプリング・ビット深度・格納形式から期待値を見積もり、欠損や形式指定の不一致を検出できます。",
             "Sha256" => "RAWの内容から計算したハッシュ値です。同一性の確認や、生成後のファイルが意図せず変わっていないかの検証に使えます。",
