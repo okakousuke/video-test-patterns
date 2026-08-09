@@ -14,7 +14,7 @@ public sealed class MainForm : Form
     private readonly ComboBox _sizeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
     private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
     private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
-    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = true, ToolbarVisible = false, Width = 760 };
+    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = true, ToolbarVisible = false, Width = 760, HelpBackColor = Color.FromArgb(248, 250, 252) };
     private Panel? _propertyViewport;
     private readonly Label _previewTitle = new()
     {
@@ -25,18 +25,20 @@ public sealed class MainForm : Form
         ForeColor = Color.FromArgb(0, 92, 180),
         Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
     };
-    private readonly NumericUpDown _previewScale = new() { Minimum = 25, Maximum = 400, Value = 100, Increment = 25, Width = 72 };
+    private readonly NumericUpDown _previewScale = new() { Minimum = 10, Maximum = 400, Value = 100, Increment = 25, Width = 72 };
     private readonly Button _fitPreviewButton = new() { Text = "全体表示", AutoSize = true };
     private readonly List<Button> _saveFormatButtons = [];
     private readonly PreviewCanvasPanel _previewPanel = new() { Dock = DockStyle.Fill, AutoScroll = true };
     private readonly PreviewPictureBox _preview = new() { BackColor = Color.Black, SizeMode = PictureBoxSizeMode.StretchImage };
-    private readonly ToolStripStatusLabel _statusLabel = new() { Text = "フォルダを選択してください。", Spring = true };
-    private readonly Button _savePngButton = new() { Text = "PNG保存", AutoSize = true, Enabled = false };
+    private readonly ToolStripStatusLabel _statusLabel = new() { Text = "フォルダを選択してください。", Spring = true, TextAlign = ContentAlignment.MiddleRight };
+    private readonly Button _savePngButton = new() { Text = "圧縮画像として保存...", AutoSize = true, Enabled = false };
+    private readonly Button _saveRawButton = new() { Text = "RAWを出力先へコピー", AutoSize = true, Enabled = false };
 
     private readonly List<ManifestEntry> _entries = [];
     private readonly ToolTip _toolTip = new() { AutoPopDelay = 10000, InitialDelay = 700, ReshowDelay = 200, ShowAlways = true };
     private Bitmap? _currentBitmap;
     private string? _currentManifestPath;
+    private string? _currentRawPath;
     private string? _outputFolder;
 
     public MainForm()
@@ -50,8 +52,9 @@ public sealed class MainForm : Form
 
         BuildUi();
         _outputFolderButton.Text = "出力先...";
-        _openFolderButton.Text = "フォルダを開く";
-        _savePngButton.Text = "画像保存...";
+        _openFolderButton.Text = "📁 フォルダを開く";
+        _savePngButton.Text = "🖼 圧縮画像として保存...";
+        _saveRawButton.Text = "📄 RAWを出力先へコピー";
         _openFolderButton.Click += (_, _) => OpenFolder();
         _manifestTree.AfterSelect += (_, _) => LoadSelectedManifest();
         _colorModelFilter.Items.AddRange(["すべて", "RGB", "YUV / YCbCr"]);
@@ -64,6 +67,7 @@ public sealed class MainForm : Form
         _outputFolderLabel.Click += (_, _) => OpenOutputFolder();
         _outputFolderButton.Click += (_, _) => SelectOutputFolder();
         _savePngButton.Click += (_, _) => SavePng();
+        _saveRawButton.Click += (_, _) => SaveRawCopy();
         _previewScale.ValueChanged += (_, _) => OnPreviewScaleChanged();
         _fitPreviewButton.Click += (_, _) => FitPreview();
         KeyDown += MainFormKeyDown;
@@ -78,7 +82,8 @@ public sealed class MainForm : Form
         _toolTip.SetToolTip(_folderLabel, "現在読み込んでいるフォルダです。");
         _toolTip.SetToolTip(_outputFolderButton, "画像の保存先フォルダを変更します。");
         _toolTip.SetToolTip(_outputFolderLabel, "現在の保存先です。クリックするとエクスプローラーで開きます。");
-        _toolTip.SetToolTip(_savePngButton, "保存形式を選んで画像を書き出します。");
+        _toolTip.SetToolTip(_savePngButton, "現在のプレビューをPNG・JPEG・TIFF・BMP・GIFの圧縮画像として保存します。");
+        _toolTip.SetToolTip(_saveRawButton, "選択中のRAWファイルを、指定した出力先フォルダへそのままコピーします。");
         _toolTip.SetToolTip(_manifestTree, "パターン名ごとにmanifestを分類しています。項目を選ぶとプレビューします。");
         _toolTip.SetToolTip(_colorModelFilter, "RGBまたはYUV / YCbCr系で一覧を絞り込みます。");
         _toolTip.SetToolTip(_sizeFilter, "画像サイズで一覧を絞り込みます。");
@@ -147,11 +152,12 @@ public sealed class MainForm : Form
 
     private Control CreateTopBar()
     {
-        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, RowCount = 2, AutoSize = true };
+        var bar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, RowCount = 2, AutoSize = true };
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 390));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -161,6 +167,7 @@ public sealed class MainForm : Form
         bar.Controls.Add(_outputFolderLabel, 2, 1);
         bar.SetColumnSpan(_outputFolderLabel, 2);
         bar.Controls.Add(_savePngButton, 4, 0);
+        bar.Controls.Add(_saveRawButton, 5, 0);
         return bar;
     }
 
@@ -187,7 +194,7 @@ public sealed class MainForm : Form
             AdjustPropertyGridColumns();
         };
         viewport.Controls.Add(_propertyGrid);
-        return WrapGroup("manifestパラメータ", viewport);
+        return WrapGroup("⚙ manifestパラメータ  [?]", viewport);
     }
 
     private GroupBox CreateManifestBrowser()
@@ -201,7 +208,7 @@ public sealed class MainForm : Form
         var content = new Panel { Dock = DockStyle.Fill };
         content.Controls.Add(_manifestTree);
         content.Controls.Add(filters);
-        return WrapGroup("manifest一覧（パターン別）", content);
+        return WrapGroup("☷ manifest一覧（パターン別）", content);
     }
 
     private GroupBox CreatePreviewGroup()
@@ -357,6 +364,8 @@ public sealed class MainForm : Form
         ReplaceBitmap(null);
         _propertyGrid.SelectedObject = null;
         _savePngButton.Enabled = false;
+        _saveRawButton.Enabled = false;
+        _currentRawPath = null;
         _previewTitle.Text = "RAWファイルを選択してください";
 
         foreach (var path in Directory.EnumerateFiles(folder, "*.manifest.json", SearchOption.AllDirectories))
@@ -447,6 +456,8 @@ public sealed class MainForm : Form
             ReplaceBitmap(null);
             _propertyGrid.SelectedObject = null;
             _savePngButton.Enabled = false;
+            _saveRawButton.Enabled = false;
+            _currentRawPath = null;
             _previewTitle.Text = Path.GetFileName(entry.Path);
             _statusLabel.Text = $"読み込み不可: {entry.Error}";
             return;
@@ -461,6 +472,8 @@ public sealed class MainForm : Form
         {
             ReplaceBitmap(null);
             _savePngButton.Enabled = false;
+            _saveRawButton.Enabled = false;
+            _currentRawPath = null;
             _statusLabel.Text = $"読み込み済み（プレビュー未対応）: {manifest.ColorModel}, {manifest.BitDepth}bit, {manifest.Storage}";
             return;
         }
@@ -471,12 +484,16 @@ public sealed class MainForm : Form
             var bitmap = LoadPreview(rawPath, manifest);
             ReplaceBitmap(bitmap);
             _savePngButton.Enabled = true;
+            _saveRawButton.Enabled = true;
+            _currentRawPath = rawPath;
             _statusLabel.Text = FormatPrimaryParameters(manifest);
         }
         catch (Exception ex)
         {
             ReplaceBitmap(null);
             _savePngButton.Enabled = false;
+            _saveRawButton.Enabled = false;
+            _currentRawPath = null;
             _statusLabel.Text = $"RAW読み込みエラー: {ex.Message}";
         }
     }
@@ -721,6 +738,42 @@ public sealed class MainForm : Form
         }
     }
 
+    private void SaveRawCopy()
+    {
+        if (string.IsNullOrWhiteSpace(_currentRawPath) || !File.Exists(_currentRawPath))
+        {
+            _statusLabel.Text = "RAWファイルを選択してください。";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_outputFolder) || !Directory.Exists(_outputFolder))
+        {
+            _statusLabel.Text = "出力先フォルダを指定してください。";
+            return;
+        }
+
+        var destination = Path.Combine(_outputFolder, Path.GetFileName(_currentRawPath));
+        if (string.Equals(Path.GetFullPath(_currentRawPath), Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
+        {
+            _statusLabel.Text = "出力先がRAWファイルと同じです。別の出力先を指定してください。";
+            return;
+        }
+
+        if (File.Exists(destination)
+            && MessageBox.Show(this, $"同名のRAWファイルを上書きしますか？\n{destination}", "上書き確認", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            return;
+
+        try
+        {
+            File.Copy(_currentRawPath, destination, overwrite: true);
+            _statusLabel.Text = $"RAWコピー完了: {Path.GetFileName(destination)}";
+        }
+        catch (IOException ex)
+        {
+            _statusLabel.Text = $"RAWコピーエラー: {ex.Message}";
+        }
+    }
+
     private static ImageFormat ImageFormatFor(int filterIndex) => filterIndex switch
     {
         2 => ImageFormat.Jpeg,
@@ -768,7 +821,7 @@ public sealed class MainForm : Form
             .DefaultIfEmpty(150)
             .Max();
         // 一番長い表示名まで左列を広げ、通常の値は横スクロールせず見える幅を確保する。
-        var target = widest + 24;
+        var target = Math.Min(155, widest + 14);
         var viewportWidth = _propertyViewport?.ClientSize.Width ?? 0;
         _propertyGrid.Width = Math.Max(viewportWidth, target + 300);
 
@@ -780,7 +833,7 @@ public sealed class MainForm : Form
 
     private void OnPreviewScaleChanged()
     {
-        _previewScale.Increment = _previewScale.Value <= 50 ? 10 : 25;
+        _previewScale.Increment = _previewScale.Value < 20 ? 10 : 25;
         UpdatePreviewSize();
     }
 
