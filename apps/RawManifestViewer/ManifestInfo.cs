@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.ComponentModel;
 
 namespace RawManifestViewer;
 
@@ -88,17 +89,43 @@ public sealed class ManifestFile
 
 public sealed class ManifestDisplay
 {
+    [DisplayName("パターン名")]
+    [Description("生成したテストパターンの名前です。manifestのparameters.patternに対応します。")]
     public string Id { get; init; } = "";
+    [DisplayName("RAWファイル")]
+    [Description("実際に読み込むRAWファイルのパスです。manifestのfilesからkind=rawを選択します。")]
     public string RawFile { get; init; } = "";
+    [DisplayName("画像サイズ")]
+    [Description("RAW画像の幅と高さです。")]
     public string Size { get; init; } = "";
+    [DisplayName("色モデル")]
+    [Description("画素値の色表現です。現在はRGB 8bitのプレビューに対応しています。")]
     public string ColorModel { get; init; } = "";
+    [DisplayName("チャンネル順")]
+    [Description("RGB各チャンネルの並び順です。packed形式で使用します。")]
     public string ChannelOrder { get; init; } = "";
+    [DisplayName("色差サブサンプリング")]
+    [Description("輝度と色差のサンプル数の比率です。4:4:4、4:2:2、4:2:0などで表します。")]
     public string Subsampling { get; init; } = "";
+    [DisplayName("ビット深度")]
+    [Description("1サンプルあたりの有効ビット数です。8bitや10bitなどで表します。")]
     public string BitDepth { get; init; } = "";
+    [DisplayName("レンジ")]
+    [Description("画素値の使用範囲です。fullは全域、limitedは映像信号向けの制限範囲です。")]
     public string Range { get; init; } = "";
+    [DisplayName("マトリクス")]
+    [Description("RGBとY'CbCrの相互変換に使う係数の規格名です。")]
     public string Matrix { get; init; } = "";
+    [DisplayName("格納形式")]
+    [Description("RAWファイル内でのサンプルの並び方です。planar、packed、NV12などがあります。")]
     public string Storage { get; init; } = "";
+    [DisplayName("アライメント")]
+    [Description("10bitなどをコンテナへ格納するときのビット詰め方向です。")]
     public string Alignment { get; init; } = "";
+    [DisplayName("RAWバイト数")]
+    [Description("生成されたRAWファイルのサイズです。")]
     public string RawBytes { get; init; } = "";
+    [DisplayName("RAW SHA-256")]
+    [Description("RAWファイル内容のハッシュ値です。ファイル同一性の確認に使います。")]
     public string Sha256 { get; init; } = "";
 }

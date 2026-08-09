@@ -9,7 +9,7 @@ public sealed class MainForm : Form
     private readonly Button _openFolderButton = new() { Text = "フォルダを開く", AutoSize = true };
     private readonly Label _folderLabel = new() { Text = "フォルダ未選択", AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill };
-    private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = false, ToolbarVisible = false };
+    private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = false };
     private readonly PictureBox _preview = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(35, 35, 35), SizeMode = PictureBoxSizeMode.Zoom };
     private readonly ToolStripStatusLabel _statusLabel = new() { Text = "フォルダを選択してください。", Spring = true };
     private readonly Button _savePngButton = new() { Text = "PNG保存", AutoSize = true, Enabled = false };
