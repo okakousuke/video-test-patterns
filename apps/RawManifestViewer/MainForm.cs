@@ -15,6 +15,7 @@ public sealed class MainForm : Form
     private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
     private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly PropertyGrid _propertyGrid = new() { HelpVisible = true, ToolbarVisible = false, Width = 760 };
+    private Panel? _propertyViewport;
     private readonly Label _previewTitle = new()
     {
         Text = "RAWファイルを選択してください",
@@ -176,10 +177,15 @@ public sealed class MainForm : Form
     private Control CreatePropertyBrowser()
     {
         var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        _propertyViewport = viewport;
         _propertyGrid.Location = Point.Empty;
         _propertyGrid.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         _propertyGrid.Height = 260;
-        viewport.Resize += (_, _) => _propertyGrid.Height = Math.Max(1, viewport.ClientSize.Height);
+        viewport.Resize += (_, _) =>
+        {
+            _propertyGrid.Height = Math.Max(1, viewport.ClientSize.Height);
+            AdjustPropertyGridColumns();
+        };
         viewport.Controls.Add(_propertyGrid);
         return WrapGroup("manifestパラメータ", viewport);
     }
@@ -200,9 +206,7 @@ public sealed class MainForm : Form
 
     private GroupBox CreatePreviewGroup()
     {
-        var header = new TableLayoutPanel { Dock = DockStyle.Top, Height = 30, ColumnCount = 10 };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var header = new TableLayoutPanel { Dock = DockStyle.Top, Height = 30, ColumnCount = 9 };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -212,15 +216,15 @@ public sealed class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         // 主要パラメータは最下部のステータスバーへ集約する。
         _previewTitle.Visible = false;
-        header.Controls.Add(new Label { Text = "表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 1, 0);
-        header.Controls.Add(_previewScale, 2, 0);
-        header.Controls.Add(_fitPreviewButton, 3, 0);
-        header.Controls.Add(new Label { Text = "保存", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(8, 5, 4, 0) }, 4, 0);
-        header.Controls.Add(CreateSaveButton("PNG", ImageFormat.Png, "png"), 5, 0);
-        header.Controls.Add(CreateSaveButton("JPG", ImageFormat.Jpeg, "jpg"), 6, 0);
-        header.Controls.Add(CreateSaveButton("TIFF", ImageFormat.Tiff, "tiff"), 7, 0);
-        header.Controls.Add(CreateSaveButton("BMP", ImageFormat.Bmp, "bmp"), 8, 0);
-        header.Controls.Add(CreateSaveButton("GIF", ImageFormat.Gif, "gif"), 9, 0);
+        header.Controls.Add(new Label { Text = "表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 0, 0);
+        header.Controls.Add(_previewScale, 1, 0);
+        header.Controls.Add(_fitPreviewButton, 2, 0);
+        header.Controls.Add(new Label { Text = "保存", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(8, 5, 4, 0) }, 3, 0);
+        header.Controls.Add(CreateSaveButton("PNG", ImageFormat.Png, "png"), 4, 0);
+        header.Controls.Add(CreateSaveButton("JPG", ImageFormat.Jpeg, "jpg"), 5, 0);
+        header.Controls.Add(CreateSaveButton("TIFF", ImageFormat.Tiff, "tiff"), 6, 0);
+        header.Controls.Add(CreateSaveButton("BMP", ImageFormat.Bmp, "bmp"), 7, 0);
+        header.Controls.Add(CreateSaveButton("GIF", ImageFormat.Gif, "gif"), 8, 0);
 
         _previewPanel.Controls.Add(_preview);
         var content = new Panel { Dock = DockStyle.Fill };
@@ -498,7 +502,7 @@ public sealed class MainForm : Form
         string.IsNullOrWhiteSpace(value) ? $"（{note}）" : value;
 
     private static string FormatPrimaryParameters(ManifestInfo manifest) =>
-        $"{manifest.ColorModel} / {manifest.Subsampling} / {manifest.BitDepth}bit / {manifest.Storage} / {manifest.Width} x {manifest.Height}";
+        $"色モデル: {manifest.ColorModel} / 色差サブサンプリング: {manifest.Subsampling} / ビット深度: {manifest.BitDepth}bit / 格納形式: {manifest.Storage} / 画像サイズ: {manifest.Width} x {manifest.Height}";
 
     private static Bitmap LoadPreview(string rawPath, ManifestInfo manifest)
     {
@@ -763,8 +767,10 @@ public sealed class MainForm : Form
             .Select(property => TextRenderer.MeasureText(property.DisplayName, _propertyGrid.Font).Width)
             .DefaultIfEmpty(150)
             .Max();
-        // 一番長い表示名まで左列を広げる。狭いペインでは親Panelの横スクロールを使う。
-        var target = Math.Max(180, widest + 36);
+        // 一番長い表示名まで左列を広げ、通常の値は横スクロールせず見える幅を確保する。
+        var target = widest + 24;
+        var viewportWidth = _propertyViewport?.ClientSize.Width ?? 0;
+        _propertyGrid.Width = Math.Max(viewportWidth, target + 300);
 
         var gridViewField = typeof(PropertyGrid).GetField("gridView", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var gridView = gridViewField?.GetValue(_propertyGrid);
