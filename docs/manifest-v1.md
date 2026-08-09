@@ -42,7 +42,7 @@ Python生成器とRawManifestViewerは、このファイルをRAWデータの共
 | 段階 | 表示対象 | 状態 |
 | --- | --- | --- |
 | 1 | RGB 8bit planar / packed | プレビュー対応 |
-| 2 | YCbCr 8bit 4:4:4 | 追加予定 |
+| 2 | YCbCr 8bit 4:4:4 planar / packed | プレビュー対応 |
 | 3 | YCbCr 8bit NV12 / 4:2:2 packed | 追加予定 |
 | 4 | 10bit planar / P010 / v210 / MIPI10 | 追加予定 |
 

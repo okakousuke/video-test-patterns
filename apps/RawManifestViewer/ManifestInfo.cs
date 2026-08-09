@@ -48,8 +48,10 @@ public sealed class ManifestInfo
         return File.Exists(rootCandidate) ? rootCandidate : candidate;
     }
 
-    public bool SupportsRgb8Preview =>
-        BitDepth == 8 && string.Equals(ColorModel, "rgb", StringComparison.OrdinalIgnoreCase)
+    public bool SupportsPreview =>
+        BitDepth == 8 && string.Equals(Subsampling, "4:4:4", StringComparison.OrdinalIgnoreCase)
+        && (string.Equals(ColorModel, "rgb", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase))
         && (string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase));
 

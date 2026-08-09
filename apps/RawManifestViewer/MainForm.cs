@@ -146,7 +146,7 @@ public sealed class MainForm : Form
         var manifest = entry.Manifest;
         _propertyGrid.SelectedObject = ToDisplay(manifest, entry.Path);
 
-        if (!manifest.SupportsRgb8Preview)
+        if (!manifest.SupportsPreview)
         {
             ReplaceBitmap(null);
             _savePngButton.Enabled = false;
@@ -157,7 +157,7 @@ public sealed class MainForm : Form
         try
         {
             var rawPath = manifest.ResolveRawPath(entry.Path);
-            var bitmap = LoadRgb8(rawPath, manifest);
+            var bitmap = LoadPreview(rawPath, manifest);
             ReplaceBitmap(bitmap);
             _savePngButton.Enabled = true;
             _statusLabel.Text = $"表示中: {Path.GetFileName(rawPath)} ({bitmap.Width}x{bitmap.Height})";
@@ -187,7 +187,7 @@ public sealed class MainForm : Form
         Sha256 = manifest.Raw.Sha256 ?? "未指定",
     };
 
-    private static Bitmap LoadRgb8(string rawPath, ManifestInfo manifest)
+    private static Bitmap LoadPreview(string rawPath, ManifestInfo manifest)
     {
         if (!File.Exists(rawPath))
             throw new FileNotFoundException("manifestが指すRAWファイルがありません。", rawPath);
@@ -209,6 +209,7 @@ public sealed class MainForm : Form
         {
             var data = File.ReadAllBytes(rawPath);
             var bgr = string.Equals(manifest.ChannelOrder, "BGR", StringComparison.OrdinalIgnoreCase);
+            var ycbcr = string.Equals(manifest.ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase);
 
             for (var y = 0; y < manifest.Height; y++)
             {
@@ -218,9 +219,12 @@ public sealed class MainForm : Form
                     var pixel = y * manifest.Width + x;
                     var source = isPlanar ? pixel : pixel * 3;
                     var target = destination + x * 3;
-                    var r = isPlanar ? data[source] : data[source + (bgr ? 2 : 0)];
-                    var g = isPlanar ? data[source + manifest.Width * manifest.Height] : data[source + 1];
-                    var b = isPlanar ? data[source + 2 * manifest.Width * manifest.Height] : data[source + (bgr ? 0 : 2)];
+                    var first = isPlanar ? data[source] : data[source + (bgr ? 2 : 0)];
+                    var second = isPlanar ? data[source + manifest.Width * manifest.Height] : data[source + 1];
+                    var third = isPlanar ? data[source + 2 * manifest.Width * manifest.Height] : data[source + (bgr ? 0 : 2)];
+                    var (r, g, b) = ycbcr
+                        ? YcbcrToRgb(first, second, third, manifest.Matrix, manifest.Range)
+                        : (first, second, third);
                     Marshal.WriteByte(target, b);
                     Marshal.WriteByte(target + 1, g);
                     Marshal.WriteByte(target + 2, r);
@@ -239,6 +243,27 @@ public sealed class MainForm : Form
 
         return bitmap;
     }
+
+    private static (byte R, byte G, byte B) YcbcrToRgb(byte yCode, byte cbCode, byte crCode, string? matrix, string? range)
+    {
+        var (kr, kb) = matrix?.ToLowerInvariant() switch
+        {
+            "bt601" => (0.299, 0.114),
+            "bt2020" => (0.2627, 0.0593),
+            _ => (0.2126, 0.0722), // bt709 is the default for an omitted value.
+        };
+        var kg = 1.0 - kr - kb;
+        var limited = string.Equals(range, "limited", StringComparison.OrdinalIgnoreCase);
+        var y = limited ? (yCode - 16.0) / 219.0 : yCode / 255.0;
+        var cb = limited ? (cbCode - 128.0) / 224.0 : (cbCode - 128.0) / 255.0;
+        var cr = limited ? (crCode - 128.0) / 224.0 : (crCode - 128.0) / 255.0;
+        var r = y + 2.0 * (1.0 - kr) * cr;
+        var b = y + 2.0 * (1.0 - kb) * cb;
+        var g = (y - kr * r - kb * b) / kg;
+        return (ToByte(r), ToByte(g), ToByte(b));
+    }
+
+    private static byte ToByte(double value) => (byte)Math.Clamp((int)Math.Round(value * 255.0), 0, 255);
 
     private void SavePng()
     {
