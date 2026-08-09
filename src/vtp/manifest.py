@@ -33,11 +33,12 @@ def build(
     cfg: Config,
     outputs: dict[str, str],
     raw_size: int,
+    relative_to: str | Path,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """manifest の中身を組み立てる.
 
-    ``outputs`` は ``{"raw": "generated/pattern.raw", ...}`` の形。
+    ``files[].path`` はmanifestファイルの置かれるディレクトリからの相対パスで記録する。
     """
     params = cfg.to_dict()
     params.pop("output", None)
@@ -46,10 +47,11 @@ def build(
     files = []
     for kind, path in sorted(outputs.items()):
         p = Path(path)
+        relative_path = p.resolve().relative_to(Path(relative_to).resolve()).as_posix()
         files.append(
             {
                 "kind": kind,
-                "path": p.as_posix(),
+                "path": relative_path,
                 "bytes": p.stat().st_size if p.exists() else None,
                 "sha256": sha256_file(p) if p.exists() else None,
             }

@@ -35,6 +35,8 @@ def test_manifest_contents(tmp_path):
     assert {"raw", "png"} <= kinds
     for f in doc["files"]:
         assert len(f["sha256"]) == 64
+        assert not f["path"].startswith("/")
+        assert "/" not in f["path"]
     assert doc["parameters_sha256"] == res.manifest["parameters_sha256"]
 
 

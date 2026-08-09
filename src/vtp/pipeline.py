@@ -88,6 +88,7 @@ def generate(cfg: Config, out_base: str | Path | None = None) -> Result:
         cfg,
         outputs,
         raw_size=len(raw),
+        relative_to=base.parent,
         extra={"roundtrip_verified": ok},
     )
     if "json" in cfg.outputs:
