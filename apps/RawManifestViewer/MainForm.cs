@@ -8,9 +8,12 @@ public sealed class MainForm : Form
 {
     private readonly Button _openFolderButton = new() { Text = "フォルダを開く", AutoSize = true };
     private readonly Label _folderLabel = new() { Text = "フォルダ未選択", AutoEllipsis = true, Dock = DockStyle.Fill };
-    private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill };
+    private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill, HorizontalScrollbar = true };
     private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = false };
-    private readonly PictureBox _preview = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(35, 35, 35), SizeMode = PictureBoxSizeMode.Zoom };
+    private readonly Label _previewTitle = new() { Text = "RAWファイルを選択してください", AutoEllipsis = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly NumericUpDown _previewScale = new() { Minimum = 25, Maximum = 400, Value = 100, Increment = 25, Width = 72 };
+    private readonly Panel _previewPanel = new() { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(35, 35, 35) };
+    private readonly PictureBox _preview = new() { BackColor = Color.FromArgb(35, 35, 35), SizeMode = PictureBoxSizeMode.StretchImage };
     private readonly ToolStripStatusLabel _statusLabel = new() { Text = "フォルダを選択してください。", Spring = true };
     private readonly Button _savePngButton = new() { Text = "PNG保存", AutoSize = true, Enabled = false };
 
@@ -21,7 +24,7 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "RAW Manifest Viewer - 最小版";
-        Width = 1200;
+        Width = 1380;
         Height = 760;
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.CenterScreen;
@@ -30,6 +33,7 @@ public sealed class MainForm : Form
         _openFolderButton.Click += (_, _) => OpenFolder();
         _manifestList.SelectedIndexChanged += (_, _) => LoadSelectedManifest();
         _savePngButton.Click += (_, _) => SavePng();
+        _previewScale.ValueChanged += (_, _) => UpdatePreviewSize();
         FormClosed += (_, _) => ReplaceBitmap(null);
     }
 
@@ -42,7 +46,7 @@ public sealed class MainForm : Form
             ColumnCount = 2,
             RowCount = 3,
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 310));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 470));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -67,7 +71,7 @@ public sealed class MainForm : Form
 
         var previewGroup = WrapGroup("プレビュー（アスペクト比維持）", _preview);
         previewGroup.Padding = new Padding(4, 20, 4, 4);
-        root.Controls.Add(previewGroup, 1, 1);
+        root.Controls.Add(CreatePreviewGroup(), 1, 1);
 
         var status = new StatusStrip { SizingGrip = false };
         status.Items.Add(_statusLabel);
@@ -84,6 +88,23 @@ public sealed class MainForm : Form
         Padding = new Padding(8),
         Controls = { content },
     };
+
+    private GroupBox CreatePreviewGroup()
+    {
+        var header = new TableLayoutPanel { Dock = DockStyle.Top, Height = 28, ColumnCount = 3 };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.Controls.Add(_previewTitle, 0, 0);
+        header.Controls.Add(new Label { Text = "表示倍率", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 5, 6, 0) }, 1, 0);
+        header.Controls.Add(_previewScale, 2, 0);
+
+        _previewPanel.Controls.Add(_preview);
+        var content = new Panel { Dock = DockStyle.Fill };
+        content.Controls.Add(_previewPanel);
+        content.Controls.Add(header);
+        return WrapGroup("プレビュー（アスペクト比維持）", content);
+    }
 
     private void OpenFolder()
     {
@@ -107,6 +128,7 @@ public sealed class MainForm : Form
         ReplaceBitmap(null);
         _propertyGrid.SelectedObject = null;
         _savePngButton.Enabled = false;
+        _previewTitle.Text = "RAWファイルを選択してください";
 
         foreach (var path in Directory.EnumerateFiles(folder, "*.manifest.json", SearchOption.AllDirectories))
         {
@@ -139,12 +161,14 @@ public sealed class MainForm : Form
             ReplaceBitmap(null);
             _propertyGrid.SelectedObject = null;
             _savePngButton.Enabled = false;
+            _previewTitle.Text = Path.GetFileName(entry.Path);
             _statusLabel.Text = $"読み込み不可: {entry.Error}";
             return;
         }
 
         var manifest = entry.Manifest;
         _propertyGrid.SelectedObject = ToDisplay(manifest, entry.Path);
+        _previewTitle.Text = Path.GetFileName(manifest.Raw.Path);
 
         if (!manifest.SupportsPreview)
         {
@@ -176,16 +200,19 @@ public sealed class MainForm : Form
         RawFile = manifest.Raw.Path,
         Size = $"{manifest.Width} x {manifest.Height}",
         ColorModel = manifest.ColorModel ?? "",
-        ChannelOrder = manifest.ChannelOrder ?? "",
+        ChannelOrder = ValueOrNote(manifest.ChannelOrder, "この格納形式では未使用"),
         Subsampling = manifest.Subsampling ?? "",
         BitDepth = manifest.BitDepth.ToString(),
-        Range = manifest.Range ?? "",
-        Matrix = manifest.Matrix ?? "",
+        Range = ValueOrNote(manifest.Range, "この色モデルでは未使用"),
+        Matrix = ValueOrNote(manifest.Matrix, "この色モデルでは未使用"),
         Storage = manifest.Storage ?? "",
-        Alignment = manifest.Alignment ?? "",
+        Alignment = ValueOrNote(manifest.Alignment, "この格納形式では未使用"),
         RawBytes = manifest.RawBytes.ToString(),
         Sha256 = manifest.Raw.Sha256 ?? "未指定",
     };
+
+    private static string ValueOrNote(string? value, string note) =>
+        string.IsNullOrWhiteSpace(value) ? $"（{note}）" : value;
 
     private static Bitmap LoadPreview(string rawPath, ManifestInfo manifest)
     {
@@ -395,11 +422,36 @@ public sealed class MainForm : Form
             Filter = "PNG画像 (*.png)|*.png",
             FileName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview") + ".png",
         };
+        dialog.Filter = "PNG (*.png)|*.png|JPEG (*.jpg;*.jpeg)|*.jpg;*.jpeg|TIFF (*.tif;*.tiff)|*.tif;*.tiff|BMP (*.bmp)|*.bmp|GIF (*.gif)|*.gif";
+        dialog.FilterIndex = 1;
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
-            _currentBitmap.Save(dialog.FileName, ImageFormat.Png);
+            _currentBitmap.Save(dialog.FileName, ImageFormatFor(dialog.FilterIndex));
             _statusLabel.Text = $"保存しました: {dialog.FileName}";
         }
+    }
+
+    private static ImageFormat ImageFormatFor(int filterIndex) => filterIndex switch
+    {
+        2 => ImageFormat.Jpeg,
+        3 => ImageFormat.Tiff,
+        4 => ImageFormat.Bmp,
+        5 => ImageFormat.Gif,
+        _ => ImageFormat.Png,
+    };
+
+    private void UpdatePreviewSize()
+    {
+        if (_currentBitmap is null)
+        {
+            _preview.Size = Size.Empty;
+            return;
+        }
+
+        var scale = (float)_previewScale.Value / 100f;
+        _preview.Size = new Size(
+            Math.Max(1, (int)Math.Round(_currentBitmap.Width * scale)),
+            Math.Max(1, (int)Math.Round(_currentBitmap.Height * scale)));
     }
 
     private void ReplaceBitmap(Bitmap? bitmap)
@@ -407,6 +459,7 @@ public sealed class MainForm : Form
         var old = _currentBitmap;
         _currentBitmap = bitmap;
         _preview.Image = bitmap;
+        UpdatePreviewSize();
         old?.Dispose();
     }
 
@@ -430,7 +483,8 @@ public sealed class MainForm : Form
             if (_manifest is null)
                 return $"[エラー] {Path.GetFileName(_path)}";
 
-            return $"{_manifest.Id ?? Path.GetFileName(_path)}  ({_manifest.Width}x{_manifest.Height})";
+            var rawName = _manifest.Raw.Path;
+            return $"{Path.GetFileName(rawName)}  [{_manifest.Storage}, {_manifest.BitDepth}bit, {_manifest.Width}x{_manifest.Height}]";
         }
     }
 }
