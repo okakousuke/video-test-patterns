@@ -11,7 +11,7 @@
 - 8bit RGB 4:4:4 planar / packed、YCbCr 4:4:4・4:2:2 packed・NV12 RAWのプレビュー
 - PNG保存
 
-現在のプレビューは8bit RGB 4:4:4 planar / packedと、YCbCr 4:4:4 planar / packed・4:2:2 packed（UYVY）・4:2:0 NV12に対応しています。10bit、P010、v210などの対応外形式もマニフェスト情報は表示し、プレビュー欄には未対応理由を表示します。共通仕様は[`docs/manifest-v1.md`](../../docs/manifest-v1.md)を参照してください。
+現在のプレビューはRGB / YCbCr 4:4:4 planar（8bit・10bit）、YCbCr 4:4:4 packed、4:2:2 packed（UYVY）、4:2:0 NV12 / P010に対応しています。v210、MIPI10などの対応外形式もマニフェスト情報は表示し、プレビュー欄には未対応理由を表示します。共通仕様は[`docs/manifest-v1.md`](../../docs/manifest-v1.md)を参照してください。
 
 ## ビルドと起動
 

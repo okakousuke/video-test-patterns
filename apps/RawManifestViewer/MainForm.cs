@@ -195,12 +195,14 @@ public sealed class MainForm : Form
         var isYcbcr = string.Equals(manifest.ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase);
         var isPlanar = string.Equals(manifest.Storage, "planar", StringComparison.OrdinalIgnoreCase);
         var isNv12 = string.Equals(manifest.Storage, "nv12", StringComparison.OrdinalIgnoreCase);
+        var isP010 = string.Equals(manifest.Storage, "p010", StringComparison.OrdinalIgnoreCase);
+        var bytesPerSample = manifest.BitDepth == 10 ? 2 : 1;
         var is422 = string.Equals(manifest.Subsampling, "4:2:2", StringComparison.OrdinalIgnoreCase);
-        var expectedMinimum = isNv12
-            ? checked(manifest.Width * manifest.Height * 3 / 2)
+        var expectedMinimum = isNv12 || isP010
+            ? checked(manifest.Width * manifest.Height * 3 / 2 * bytesPerSample)
             : isYcbcr && is422
                 ? checked(manifest.Width * manifest.Height * 2)
-                : checked(manifest.Width * manifest.Height * 3);
+                : checked(manifest.Width * manifest.Height * 3 * bytesPerSample);
         var fileLength = new FileInfo(rawPath).Length;
         if (fileLength < expectedMinimum)
             throw new InvalidDataException($"RAWサイズが不足しています: {fileLength} < {expectedMinimum} bytes");
@@ -221,14 +223,14 @@ public sealed class MainForm : Form
                 {
                     var pixel = y * manifest.Width + x;
                     var target = destination + x * 3;
-                    byte first, second, third;
-                    if (isNv12)
+                    int first, second, third;
+                    if (isNv12 || isP010)
                     {
                         var ySize = manifest.Width * manifest.Height;
-                        var chroma = ySize + (y / 2) * manifest.Width + (x / 2) * 2;
-                        first = data[pixel];
-                        second = data[chroma];
-                        third = data[chroma + 1];
+                        var chroma = ySize * bytesPerSample + (y / 2) * manifest.Width * bytesPerSample + (x / 2) * 2 * bytesPerSample;
+                        first = ReadCode(data, pixel * bytesPerSample, manifest.BitDepth, isP010 ? "msb" : manifest.Alignment);
+                        second = ReadCode(data, chroma, manifest.BitDepth, isP010 ? "msb" : manifest.Alignment);
+                        third = ReadCode(data, chroma + bytesPerSample, manifest.BitDepth, isP010 ? "msb" : manifest.Alignment);
                     }
                     else if (isYcbcr && is422)
                     {
@@ -239,14 +241,21 @@ public sealed class MainForm : Form
                     }
                     else
                     {
-                        var source = isPlanar ? pixel : pixel * 3;
-                        first = isPlanar ? data[source] : data[source + (bgr ? 2 : 0)];
-                        second = isPlanar ? data[source + manifest.Width * manifest.Height] : data[source + 1];
-                        third = isPlanar ? data[source + 2 * manifest.Width * manifest.Height] : data[source + (bgr ? 0 : 2)];
+                        var source = isPlanar ? pixel * bytesPerSample : pixel * 3;
+                        var plane = manifest.Width * manifest.Height * bytesPerSample;
+                        first = isPlanar
+                            ? ReadCode(data, source, manifest.BitDepth, manifest.Alignment)
+                            : data[source + (bgr ? 2 : 0)];
+                        second = isPlanar
+                            ? ReadCode(data, source + plane, manifest.BitDepth, manifest.Alignment)
+                            : data[source + 1];
+                        third = isPlanar
+                            ? ReadCode(data, source + 2 * plane, manifest.BitDepth, manifest.Alignment)
+                            : data[source + (bgr ? 0 : 2)];
                     }
                     var (r, g, b) = isYcbcr
-                        ? YcbcrToRgb(first, second, third, manifest.Matrix, manifest.Range)
-                        : (first, second, third);
+                        ? YcbcrToRgb(first, second, third, manifest.Matrix, manifest.Range, manifest.BitDepth)
+                        : (ToByte(first / ((1 << manifest.BitDepth) - 1.0)), ToByte(second / ((1 << manifest.BitDepth) - 1.0)), ToByte(third / ((1 << manifest.BitDepth) - 1.0)));
                     Marshal.WriteByte(target, b);
                     Marshal.WriteByte(target + 1, g);
                     Marshal.WriteByte(target + 2, r);
@@ -266,7 +275,16 @@ public sealed class MainForm : Form
         return bitmap;
     }
 
-    private static (byte R, byte G, byte B) YcbcrToRgb(byte yCode, byte cbCode, byte crCode, string? matrix, string? range)
+    private static int ReadCode(byte[] data, int offset, int bitDepth, string? alignment)
+    {
+        if (bitDepth == 8) return data[offset];
+        var container = data[offset] | (data[offset + 1] << 8);
+        return string.Equals(alignment, "msb", StringComparison.OrdinalIgnoreCase)
+            ? container >> 6
+            : container & 0x03ff;
+    }
+
+    private static (byte R, byte G, byte B) YcbcrToRgb(int yCode, int cbCode, int crCode, string? matrix, string? range, int bitDepth)
     {
         var (kr, kb) = matrix?.ToLowerInvariant() switch
         {
@@ -276,9 +294,11 @@ public sealed class MainForm : Form
         };
         var kg = 1.0 - kr - kb;
         var limited = string.Equals(range, "limited", StringComparison.OrdinalIgnoreCase);
-        var y = limited ? (yCode - 16.0) / 219.0 : yCode / 255.0;
-        var cb = limited ? (cbCode - 128.0) / 224.0 : (cbCode - 128.0) / 255.0;
-        var cr = limited ? (crCode - 128.0) / 224.0 : (crCode - 128.0) / 255.0;
+        var shift = 1 << (bitDepth - 8);
+        var peak = (1 << bitDepth) - 1.0;
+        var y = limited ? (yCode - 16.0 * shift) / (219.0 * shift) : yCode / peak;
+        var cb = limited ? (cbCode - 128.0 * shift) / (224.0 * shift) : (cbCode - 128.0 * shift) / peak;
+        var cr = limited ? (crCode - 128.0 * shift) / (224.0 * shift) : (crCode - 128.0 * shift) / peak;
         var r = y + 2.0 * (1.0 - kr) * cr;
         var b = y + 2.0 * (1.0 - kb) * cb;
         var g = (y - kr * r - kb * b) / kg;

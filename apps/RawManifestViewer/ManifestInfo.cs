@@ -52,20 +52,20 @@ public sealed class ManifestInfo
     {
         get
         {
-            if (BitDepth != 8) return false;
             if (string.Equals(ColorModel, "rgb", StringComparison.OrdinalIgnoreCase))
                 return string.Equals(Subsampling, "4:4:4", StringComparison.OrdinalIgnoreCase)
-                    && (string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase));
+                    && ((BitDepth == 8 && string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase))
+                        || ((BitDepth == 8 || BitDepth == 10) && string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase)));
 
             if (!string.Equals(ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase)) return false;
             return (string.Equals(Subsampling, "4:4:4", StringComparison.OrdinalIgnoreCase)
-                    && (string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase)))
+                    && ((BitDepth == 8 && string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase))
+                        || ((BitDepth == 8 || BitDepth == 10) && string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase))))
                 || (string.Equals(Subsampling, "4:2:2", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase))
+                    && BitDepth == 8 && string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase))
                 || (string.Equals(Subsampling, "4:2:0", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(Storage, "nv12", StringComparison.OrdinalIgnoreCase));
+                    && ((BitDepth == 8 && string.Equals(Storage, "nv12", StringComparison.OrdinalIgnoreCase))
+                        || (BitDepth == 10 && string.Equals(Storage, "p010", StringComparison.OrdinalIgnoreCase))));
         }
     }
 
