@@ -33,6 +33,7 @@ public sealed class MainForm : Form
     private readonly Button _savePngButton = new() { Text = "PNG保存", AutoSize = true, Enabled = false };
 
     private readonly List<ManifestEntry> _entries = [];
+    private readonly ToolTip _toolTip = new() { AutoPopDelay = 10000, InitialDelay = 700, ReshowDelay = 200, ShowAlways = true };
     private Bitmap? _currentBitmap;
     private string? _currentManifestPath;
     private string? _outputFolder;
@@ -62,11 +63,28 @@ public sealed class MainForm : Form
         _outputFolderLabel.Click += (_, _) => OpenOutputFolder();
         _outputFolderButton.Click += (_, _) => SelectOutputFolder();
         _savePngButton.Click += (_, _) => SavePng();
-        _previewScale.ValueChanged += (_, _) => UpdatePreviewSize();
+        _previewScale.ValueChanged += (_, _) => OnPreviewScaleChanged();
         _fitPreviewButton.Click += (_, _) => FitPreview();
         KeyDown += MainFormKeyDown;
         Shown += (_, _) => RestoreLastFolder();
         FormClosed += (_, _) => ReplaceBitmap(null);
+        ConfigureToolTips();
+    }
+
+    private void ConfigureToolTips()
+    {
+        _toolTip.SetToolTip(_openFolderButton, "manifestとRAWファイルを含むフォルダを開きます。");
+        _toolTip.SetToolTip(_folderLabel, "現在読み込んでいるフォルダです。");
+        _toolTip.SetToolTip(_outputFolderButton, "画像の保存先フォルダを変更します。");
+        _toolTip.SetToolTip(_outputFolderLabel, "現在の保存先です。クリックするとエクスプローラーで開きます。");
+        _toolTip.SetToolTip(_savePngButton, "保存形式を選んで画像を書き出します。");
+        _toolTip.SetToolTip(_manifestTree, "パターン名ごとにmanifestを分類しています。項目を選ぶとプレビューします。");
+        _toolTip.SetToolTip(_colorModelFilter, "RGBまたはYUV / YCbCr系で一覧を絞り込みます。");
+        _toolTip.SetToolTip(_sizeFilter, "画像サイズで一覧を絞り込みます。");
+        _toolTip.SetToolTip(_propertyGrid, "manifestに記録された生成条件です。横スクロールで長い値を確認できます。");
+        _toolTip.SetToolTip(_previewScale, "表示倍率です。50%以下は10%刻み、それより大きい値は25%刻みです。");
+        _toolTip.SetToolTip(_fitPreviewButton, "画像全体が見える倍率へ戻し、中央に配置します。");
+        _toolTip.SetToolTip(_previewPanel, "全体表示では中央配置、倍率を手動変更した場合は左上起点で表示します。");
     }
 
     private void BuildUi()
@@ -220,6 +238,7 @@ public sealed class MainForm : Form
         };
         var button = new Button { Text = $"{label} ({shortcut})", AutoSize = true, Enabled = false };
         button.Click += (_, _) => SaveAs(format, extension);
+        _toolTip.SetToolTip(button, $"プレビューを{label}形式で保存します。ショートカット: {shortcut}");
         _saveFormatButtons.Add(button);
         return button;
     }
@@ -427,6 +446,7 @@ public sealed class MainForm : Form
 
         var manifest = entry.Manifest;
         _propertyGrid.SelectedObject = ToDisplay(manifest, entry.Path);
+        BeginInvoke((Action)AdjustPropertyGridColumns);
         _previewTitle.Text = FormatPrimaryParameters(manifest);
 
         if (!manifest.SupportsPreview)
@@ -446,6 +466,7 @@ public sealed class MainForm : Form
             _statusLabel.Text = "RAW: " + Path.GetFileName(rawPath);
             _statusLabel.Text = $"表示中: {Path.GetFileName(rawPath)} ({bitmap.Width}x{bitmap.Height})";
             _statusLabel.Text = "RAW: " + Path.GetFileName(rawPath);
+            _statusLabel.Text = Path.GetFileName(rawPath);
         }
         catch (Exception ex)
         {
@@ -730,6 +751,29 @@ public sealed class MainForm : Form
 
         _currentBitmap.Save(dialog.FileName, format);
         _statusLabel.Text = $"保存しました: {dialog.FileName}";
+    }
+
+    private void AdjustPropertyGridColumns()
+    {
+        if (_propertyGrid.SelectedObject is null) return;
+
+        var widest = System.ComponentModel.TypeDescriptor.GetProperties(_propertyGrid.SelectedObject)
+            .Cast<System.ComponentModel.PropertyDescriptor>()
+            .Select(property => TextRenderer.MeasureText(property.DisplayName, _propertyGrid.Font).Width)
+            .DefaultIfEmpty(150)
+            .Max();
+        var target = Math.Min(360, widest + 30);
+
+        var gridViewField = typeof(PropertyGrid).GetField("gridView", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var gridView = gridViewField?.GetValue(_propertyGrid);
+        var moveSplitter = gridView?.GetType().GetMethod("MoveSplitterTo", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        moveSplitter?.Invoke(gridView, [target]);
+    }
+
+    private void OnPreviewScaleChanged()
+    {
+        _previewScale.Increment = _previewScale.Value <= 50 ? 10 : 25;
+        UpdatePreviewSize();
     }
 
     private void UpdatePreviewSize()
