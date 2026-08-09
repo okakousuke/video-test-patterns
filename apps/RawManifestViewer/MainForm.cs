@@ -192,11 +192,15 @@ public sealed class MainForm : Form
         if (!File.Exists(rawPath))
             throw new FileNotFoundException("manifestが指すRAWファイルがありません。", rawPath);
 
-        var strideBytes = checked(manifest.Width * 3);
+        var isYcbcr = string.Equals(manifest.ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase);
         var isPlanar = string.Equals(manifest.Storage, "planar", StringComparison.OrdinalIgnoreCase);
-        var expectedMinimum = isPlanar
-            ? checked(manifest.Width * manifest.Height * 3)
-            : checked(strideBytes * manifest.Height);
+        var isNv12 = string.Equals(manifest.Storage, "nv12", StringComparison.OrdinalIgnoreCase);
+        var is422 = string.Equals(manifest.Subsampling, "4:2:2", StringComparison.OrdinalIgnoreCase);
+        var expectedMinimum = isNv12
+            ? checked(manifest.Width * manifest.Height * 3 / 2)
+            : isYcbcr && is422
+                ? checked(manifest.Width * manifest.Height * 2)
+                : checked(manifest.Width * manifest.Height * 3);
         var fileLength = new FileInfo(rawPath).Length;
         if (fileLength < expectedMinimum)
             throw new InvalidDataException($"RAWサイズが不足しています: {fileLength} < {expectedMinimum} bytes");
@@ -209,7 +213,6 @@ public sealed class MainForm : Form
         {
             var data = File.ReadAllBytes(rawPath);
             var bgr = string.Equals(manifest.ChannelOrder, "BGR", StringComparison.OrdinalIgnoreCase);
-            var ycbcr = string.Equals(manifest.ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase);
 
             for (var y = 0; y < manifest.Height; y++)
             {
@@ -217,12 +220,31 @@ public sealed class MainForm : Form
                 for (var x = 0; x < manifest.Width; x++)
                 {
                     var pixel = y * manifest.Width + x;
-                    var source = isPlanar ? pixel : pixel * 3;
                     var target = destination + x * 3;
-                    var first = isPlanar ? data[source] : data[source + (bgr ? 2 : 0)];
-                    var second = isPlanar ? data[source + manifest.Width * manifest.Height] : data[source + 1];
-                    var third = isPlanar ? data[source + 2 * manifest.Width * manifest.Height] : data[source + (bgr ? 0 : 2)];
-                    var (r, g, b) = ycbcr
+                    byte first, second, third;
+                    if (isNv12)
+                    {
+                        var ySize = manifest.Width * manifest.Height;
+                        var chroma = ySize + (y / 2) * manifest.Width + (x / 2) * 2;
+                        first = data[pixel];
+                        second = data[chroma];
+                        third = data[chroma + 1];
+                    }
+                    else if (isYcbcr && is422)
+                    {
+                        var source = (y * manifest.Width + x / 2 * 2) * 2;
+                        first = data[source + (x % 2 == 0 ? 1 : 3)];
+                        second = data[source];
+                        third = data[source + 2];
+                    }
+                    else
+                    {
+                        var source = isPlanar ? pixel : pixel * 3;
+                        first = isPlanar ? data[source] : data[source + (bgr ? 2 : 0)];
+                        second = isPlanar ? data[source + manifest.Width * manifest.Height] : data[source + 1];
+                        third = isPlanar ? data[source + 2 * manifest.Width * manifest.Height] : data[source + (bgr ? 0 : 2)];
+                    }
+                    var (r, g, b) = isYcbcr
                         ? YcbcrToRgb(first, second, third, manifest.Matrix, manifest.Range)
                         : (first, second, third);
                     Marshal.WriteByte(target, b);

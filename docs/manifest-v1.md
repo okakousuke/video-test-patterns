@@ -43,7 +43,7 @@ Python生成器とRawManifestViewerは、このファイルをRAWデータの共
 | --- | --- | --- |
 | 1 | RGB 8bit planar / packed | プレビュー対応 |
 | 2 | YCbCr 8bit 4:4:4 planar / packed | プレビュー対応 |
-| 3 | YCbCr 8bit NV12 / 4:2:2 packed | 追加予定 |
+| 3 | YCbCr 8bit 4:2:2 packed（UYVY）/ NV12 | プレビュー対応 |
 | 4 | 10bit planar / P010 / v210 / MIPI10 | 追加予定 |
 
 新しい形式をPython側へ追加する場合は、生成、manifest記録、RAWサイズ検査、C#ビューアの対応可否表示を同じ変更単位で更新します。

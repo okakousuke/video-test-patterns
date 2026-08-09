@@ -48,12 +48,26 @@ public sealed class ManifestInfo
         return File.Exists(rootCandidate) ? rootCandidate : candidate;
     }
 
-    public bool SupportsPreview =>
-        BitDepth == 8 && string.Equals(Subsampling, "4:4:4", StringComparison.OrdinalIgnoreCase)
-        && (string.Equals(ColorModel, "rgb", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase))
-        && (string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase));
+    public bool SupportsPreview
+    {
+        get
+        {
+            if (BitDepth != 8) return false;
+            if (string.Equals(ColorModel, "rgb", StringComparison.OrdinalIgnoreCase))
+                return string.Equals(Subsampling, "4:4:4", StringComparison.OrdinalIgnoreCase)
+                    && (string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase));
+
+            if (!string.Equals(ColorModel, "ycbcr", StringComparison.OrdinalIgnoreCase)) return false;
+            return (string.Equals(Subsampling, "4:4:4", StringComparison.OrdinalIgnoreCase)
+                    && (string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(Storage, "planar", StringComparison.OrdinalIgnoreCase)))
+                || (string.Equals(Subsampling, "4:2:2", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(Storage, "packed", StringComparison.OrdinalIgnoreCase))
+                || (string.Equals(Subsampling, "4:2:0", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(Storage, "nv12", StringComparison.OrdinalIgnoreCase));
+        }
+    }
 
     private void Validate()
     {
