@@ -24,8 +24,8 @@ public sealed class MainForm : Form
     private readonly NumericUpDown _previewScale = new() { Minimum = 25, Maximum = 400, Value = 100, Increment = 25, Width = 72 };
     private readonly Button _fitPreviewButton = new() { Text = "全体表示", AutoSize = true };
     private readonly List<Button> _saveFormatButtons = [];
-    private readonly Panel _previewPanel = new() { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(35, 35, 35) };
-    private readonly PictureBox _preview = new() { BackColor = Color.FromArgb(35, 35, 35), SizeMode = PictureBoxSizeMode.StretchImage };
+    private readonly PreviewCanvasPanel _previewPanel = new() { Dock = DockStyle.Fill, AutoScroll = true };
+    private readonly PreviewPictureBox _preview = new() { BackColor = Color.Black, SizeMode = PictureBoxSizeMode.StretchImage };
     private readonly ToolStripStatusLabel _statusLabel = new() { Text = "フォルダを選択してください。", Spring = true };
     private readonly Button _savePngButton = new() { Text = "PNG保存", AutoSize = true, Enabled = false };
 
@@ -584,6 +584,42 @@ public sealed class MainForm : Form
 
             var rawName = _manifest.Raw.Path;
             return $"{Path.GetFileName(rawName)}  [{_manifest.Storage}, {_manifest.BitDepth}bit, {_manifest.Width}x{_manifest.Height}]";
+        }
+    }
+
+    private sealed class PreviewCanvasPanel : Panel
+    {
+        private static readonly Color TileA = Color.FromArgb(27, 34, 48);
+        private static readonly Color TileB = Color.FromArgb(51, 38, 70);
+        private const int TileSize = 16;
+
+        public PreviewCanvasPanel()
+        {
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            for (var y = 0; y < Height; y += TileSize)
+            for (var x = 0; x < Width; x += TileSize)
+            {
+                var parity = (x / TileSize + y / TileSize) % 2;
+                using var brush = new SolidBrush(parity == 0 ? TileA : TileB);
+                e.Graphics.FillRectangle(brush, x, y, TileSize, TileSize);
+            }
+        }
+    }
+
+    private sealed class PreviewPictureBox : PictureBox
+    {
+        private static readonly Color BorderColor = Color.FromArgb(0, 180, 180);
+
+        protected override void OnPaint(PaintEventArgs pe)
+        {
+            base.OnPaint(pe);
+            if (Width < 2 || Height < 2) return;
+            using var pen = new Pen(BorderColor, 1);
+            pe.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
         }
     }
 }
