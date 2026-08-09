@@ -9,6 +9,8 @@ public sealed class MainForm : Form
     private readonly Button _openFolderButton = new() { Text = "フォルダを開く", AutoSize = true };
     private readonly Label _folderLabel = new() { Text = "フォルダ未選択", AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly ListBox _manifestList = new() { Dock = DockStyle.Fill, HorizontalScrollbar = true };
+    private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
+    private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
     private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = false };
     private readonly Label _previewTitle = new()
     {
@@ -30,6 +32,7 @@ public sealed class MainForm : Form
     private readonly List<ManifestEntry> _entries = [];
     private Bitmap? _currentBitmap;
     private string? _currentManifestPath;
+    private string? _outputFolder;
 
     public MainForm()
     {
@@ -40,10 +43,12 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
 
         BuildUi();
+        _outputFolderButton.Text = "出力先...";
         _openFolderButton.Text = "フォルダを開く";
         _savePngButton.Text = "画像保存...";
         _openFolderButton.Click += (_, _) => OpenFolder();
         _manifestList.SelectedIndexChanged += (_, _) => LoadSelectedManifest();
+        _outputFolderButton.Click += (_, _) => SelectOutputFolder();
         _savePngButton.Click += (_, _) => SavePng();
         _previewScale.ValueChanged += (_, _) => UpdatePreviewSize();
         _fitPreviewButton.Click += (_, _) => FitPreview();
@@ -65,13 +70,17 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var folderBar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, AutoSize = true };
+        var folderBar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, AutoSize = true };
         folderBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        folderBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        folderBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
         folderBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         folderBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         folderBar.Controls.Add(_openFolderButton, 0, 0);
         folderBar.Controls.Add(_folderLabel, 1, 0);
-        folderBar.Controls.Add(_savePngButton, 2, 0);
+        folderBar.Controls.Add(_outputFolderButton, 2, 0);
+        folderBar.Controls.Add(_outputFolderLabel, 3, 0);
+        folderBar.Controls.Add(_savePngButton, 4, 0);
         root.Controls.Add(folderBar, 0, 0);
         root.SetColumnSpan(folderBar, 2);
 
@@ -138,6 +147,20 @@ public sealed class MainForm : Form
         button.Click += (_, _) => SaveAs(format, extension);
         _saveFormatButtons.Add(button);
         return button;
+    }
+
+    private void SelectOutputFolder()
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "保存先フォルダを選択してください。",
+            UseDescriptionForTitle = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _outputFolder = dialog.SelectedPath;
+        _outputFolderLabel.Text = "出力先: " + _outputFolder;
+        _outputFolderLabel.ForeColor = Color.FromArgb(0, 92, 180);
     }
 
     private void OpenFolder()
@@ -478,10 +501,23 @@ public sealed class MainForm : Form
     {
         if (_currentBitmap is null) return;
 
+        var fileName = Path.GetFileNameWithoutExtension(_previewTitle.Text) + "." + extension;
+        if (!string.IsNullOrWhiteSpace(_outputFolder))
+        {
+            var outputPath = Path.Combine(_outputFolder, fileName);
+            if (File.Exists(outputPath)
+                && MessageBox.Show(this, $"同名ファイルを上書きしますか？\n{outputPath}", "上書き確認", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+
+            _currentBitmap.Save(outputPath, format);
+            _statusLabel.Text = $"保存しました: {outputPath}";
+            return;
+        }
+
         using var dialog = new SaveFileDialog
         {
             Filter = $"{extension.ToUpperInvariant()} (*.{extension})|*.{extension}",
-            FileName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview") + "." + extension,
+            FileName = fileName,
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
