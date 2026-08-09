@@ -14,6 +14,9 @@
 - 8bit RGB 4:4:4 planar / packed、YCbCr 4:4:4・4:2:2 packed・NV12 RAWのプレビュー
 - プレビュー上の専用ボタンからPNG / JPEG / TIFF / BMP / GIF保存
 - 読み込みフォルダを既定の出力先に設定し、出力先ラベルからエクスプローラーを開く
+- 前回開いたフォルダを次回起動時に自動で復元
+- 保存ボタンにはCtrl+1〜Ctrl+5のショートカットを表示し、キーボード操作でも保存可能
+- manifestパラメータは横スクロールで長い値を確認可能
 
 現在のプレビューはRGB / YCbCr 4:4:4 planar（8bit・10bit）、YCbCr 4:4:4 packed、4:2:2 packed（UYVY / v210）、4:2:0 NV12 / P010、MIPI10に対応しています。対応外形式もマニフェスト情報は表示し、プレビュー欄には未対応理由を表示します。共通仕様は[`docs/manifest-v1.md`](../../docs/manifest-v1.md)を参照してください。
 

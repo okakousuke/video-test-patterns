@@ -14,7 +14,7 @@ public sealed class MainForm : Form
     private readonly ComboBox _sizeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
     private readonly Button _outputFolderButton = new() { Text = "出力先...", AutoSize = true };
     private readonly Label _outputFolderLabel = new() { Text = "出力先: 未指定", AutoEllipsis = true, Dock = DockStyle.Fill };
-    private readonly PropertyGrid _propertyGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = false };
+    private readonly PropertyGrid _propertyGrid = new() { HelpVisible = true, ToolbarVisible = false, Width = 760 };
     private readonly Label _previewTitle = new()
     {
         Text = "RAWファイルを選択してください",
@@ -44,6 +44,7 @@ public sealed class MainForm : Form
         Height = 760;
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.CenterScreen;
+        KeyPreview = true;
 
         BuildUi();
         _outputFolderButton.Text = "出力先...";
@@ -63,6 +64,8 @@ public sealed class MainForm : Form
         _savePngButton.Click += (_, _) => SavePng();
         _previewScale.ValueChanged += (_, _) => UpdatePreviewSize();
         _fitPreviewButton.Click += (_, _) => FitPreview();
+        KeyDown += MainFormKeyDown;
+        Shown += (_, _) => RestoreLastFolder();
         FormClosed += (_, _) => ReplaceBitmap(null);
     }
 
@@ -145,8 +148,19 @@ public sealed class MainForm : Form
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
         left.Controls.Add(CreateManifestBrowser(), 0, 0);
-        left.Controls.Add(WrapGroup("manifestパラメータ", _propertyGrid), 0, 1);
+        left.Controls.Add(CreatePropertyBrowser(), 0, 1);
         return left;
+    }
+
+    private Control CreatePropertyBrowser()
+    {
+        var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        _propertyGrid.Location = Point.Empty;
+        _propertyGrid.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+        _propertyGrid.Height = 260;
+        viewport.Resize += (_, _) => _propertyGrid.Height = Math.Max(1, viewport.ClientSize.Height);
+        viewport.Controls.Add(_propertyGrid);
+        return WrapGroup("manifestパラメータ", viewport);
     }
 
     private GroupBox CreateManifestBrowser()
@@ -195,7 +209,16 @@ public sealed class MainForm : Form
 
     private Button CreateSaveButton(string label, ImageFormat format, string extension)
     {
-        var button = new Button { Text = label, AutoSize = true, Enabled = false };
+        var shortcut = extension switch
+        {
+            "png" => "Ctrl+1",
+            "jpg" => "Ctrl+2",
+            "tiff" => "Ctrl+3",
+            "bmp" => "Ctrl+4",
+            "gif" => "Ctrl+5",
+            _ => "",
+        };
+        var button = new Button { Text = $"{label} ({shortcut})", AutoSize = true, Enabled = false };
         button.Click += (_, _) => SaveAs(format, extension);
         _saveFormatButtons.Add(button);
         return button;
@@ -245,9 +268,59 @@ public sealed class MainForm : Form
 
         _folderLabel.Text = dialog.SelectedPath;
         SetOutputFolder(dialog.SelectedPath);
+        RememberLastFolder(dialog.SelectedPath);
         ScanManifests(dialog.SelectedPath);
         RefreshSizeFilter();
         RefreshManifestTree();
+    }
+
+    private static string LastFolderFilePath => Path.Combine(Application.UserAppDataPath, "last-folder.txt");
+
+    private void RestoreLastFolder()
+    {
+        try
+        {
+            if (!File.Exists(LastFolderFilePath)) return;
+            var folder = File.ReadAllText(LastFolderFilePath).Trim();
+            if (!Directory.Exists(folder)) return;
+            _folderLabel.Text = folder;
+            SetOutputFolder(folder);
+            ScanManifests(folder);
+            RefreshSizeFilter();
+            RefreshManifestTree();
+        }
+        catch (IOException)
+        {
+            // 前回フォルダの復元に失敗しても、手動選択は可能にしておく。
+        }
+    }
+
+    private static void RememberLastFolder(string folder)
+    {
+        Directory.CreateDirectory(Application.UserAppDataPath);
+        File.WriteAllText(LastFolderFilePath, folder);
+    }
+
+    private void MainFormKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!e.Control) return;
+        var handled = e.KeyCode switch
+        {
+            Keys.D1 or Keys.NumPad1 => SaveShortcut(ImageFormat.Png, "png"),
+            Keys.D2 or Keys.NumPad2 => SaveShortcut(ImageFormat.Jpeg, "jpg"),
+            Keys.D3 or Keys.NumPad3 => SaveShortcut(ImageFormat.Tiff, "tiff"),
+            Keys.D4 or Keys.NumPad4 => SaveShortcut(ImageFormat.Bmp, "bmp"),
+            Keys.D5 or Keys.NumPad5 => SaveShortcut(ImageFormat.Gif, "gif"),
+            _ => false,
+        };
+        if (handled) e.SuppressKeyPress = true;
+    }
+
+    private bool SaveShortcut(ImageFormat format, string extension)
+    {
+        if (_currentBitmap is null) return false;
+        SaveAs(format, extension);
+        return true;
     }
 
     private void ScanManifests(string folder)
@@ -354,7 +427,7 @@ public sealed class MainForm : Form
 
         var manifest = entry.Manifest;
         _propertyGrid.SelectedObject = ToDisplay(manifest, entry.Path);
-        _previewTitle.Text = Path.GetFileName(manifest.Raw.Path);
+        _previewTitle.Text = FormatPrimaryParameters(manifest);
 
         if (!manifest.SupportsPreview)
         {
@@ -370,7 +443,9 @@ public sealed class MainForm : Form
             var bitmap = LoadPreview(rawPath, manifest);
             ReplaceBitmap(bitmap);
             _savePngButton.Enabled = true;
+            _statusLabel.Text = "RAW: " + Path.GetFileName(rawPath);
             _statusLabel.Text = $"表示中: {Path.GetFileName(rawPath)} ({bitmap.Width}x{bitmap.Height})";
+            _statusLabel.Text = "RAW: " + Path.GetFileName(rawPath);
         }
         catch (Exception ex)
         {
@@ -399,6 +474,9 @@ public sealed class MainForm : Form
 
     private static string ValueOrNote(string? value, string note) =>
         string.IsNullOrWhiteSpace(value) ? $"（{note}）" : value;
+
+    private static string FormatPrimaryParameters(ManifestInfo manifest) =>
+        $"{manifest.ColorModel} / {manifest.Subsampling} / {manifest.BitDepth}bit / {manifest.Storage} / {manifest.Width} x {manifest.Height}";
 
     private static Bitmap LoadPreview(string rawPath, ManifestInfo manifest)
     {
