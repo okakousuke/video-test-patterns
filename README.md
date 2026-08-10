@@ -41,6 +41,32 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | ドット欠け・画素の欠落 | `dots` |
 | 領域の重複・入れ替わり | `blocks` |
 
+### 作成できるパターン一覧
+
+以下は、色変換やRAW格納形式を含まない、パターンそのもの（RGB888）のサンプルです。
+画像はすべて640×480のPNGで、[サンプルフォルダ](samples/patterns/)からもまとめて確認できます。
+
+| パターン | サンプル | 用途 |
+| --- | --- | --- |
+| `colorbar` | [colorbar.png](samples/patterns/colorbar.png) | 100%カラーバー、色順・チャンネル確認 |
+| `colorbar75` | [colorbar75.png](samples/patterns/colorbar75.png) | 75%カラーバー、レベル確認 |
+| `graysteps` | [graysteps.png](samples/patterns/graysteps.png) | 階調・黒つぶれ・白飛び確認 |
+| `grayramp` | [grayramp.png](samples/patterns/grayramp.png) | 連続階調・バンディング確認 |
+| `frame` | [frame.png](samples/patterns/frame.png) | オーバースキャン・安全領域確認 |
+| `crosshair` | [crosshair.png](samples/patterns/crosshair.png) | 中心位置・アスペクト比確認 |
+| `grid` | [grid.png](samples/patterns/grid.png) | レンズ歪み・射影変換確認 |
+| `circles` | [circles.png](samples/patterns/circles.png) | 中心・アスペクト比・レンズ歪み確認 |
+| `radial` | [radial.png](samples/patterns/radial.png) | 回転ずれ・放射方向の歪み確認 |
+| `hatch` | [hatch.png](samples/patterns/hatch.png) | 色差サンプリング確認 |
+| `dots` | [dots.png](samples/patterns/dots.png) | ドット欠け・画素欠落確認 |
+| `blocks` | [blocks.png](samples/patterns/blocks.png) | 領域の重複・入れ替わり確認 |
+
+サンプルを再生成する場合は、リポジトリのルートで次を実行します。
+
+```sh
+python tools/generate_pattern_samples.py
+```
+
 ### 例: 4:2:0 で色が消えるのを見る
 
 赤と青の 1 画素縞は、輝度がほぼ同じで色差だけが遠い組み合わせです。
