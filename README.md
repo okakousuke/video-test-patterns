@@ -47,7 +47,9 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | 色相の連続性・色域 | `rainbow` |
 | 量子化の段差（バンディング） | `shallowramp`, `stepmatrix` |
 | 画素の縦横比 | `square`, `circles` |
-| 向きごとの解像限界 | `wedge` |
+| 向きごとの解像限界 | `wedge`, `siemens`, `linepairs` |
+| 境目の立ち上がり（画素より細かく） | `slantedge` |
+| むら・純度・レベル（形の無い面で） | `raster` |
 | ひととおりまとめて | `testcard`, `geometrycard`, `resolutioncard` |
 | 表示側の伝達特性（ガンマ） | `gamma` |
 | 成分ごと・色ごとの階調の偏り | `colorramp`, `colormatrix` |
@@ -96,15 +98,20 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `splitsteps` | [splitsteps.png](samples/patterns/splitsteps.png) | 上下で並びを逆にしたグレーステップ |
 | `geometrycard` | [geometrycard.png](samples/patterns/geometrycard.png) | 幾何確認に寄せたテストカード（格子・円・対角線） |
 | `resolutioncard` | [resolutioncard.png](samples/patterns/resolutioncard.png) | 解像確認に寄せたテストカード（中央＋四隅のくさび） |
+| `siemens` | [siemens.png](samples/patterns/siemens.png) | 放射状のくさび。解像限界と、その先の折り返し確認 |
+| `linepairs` | [linepairs.png](samples/patterns/linepairs.png) | 線幅ごとの縞。どの太さから潰れるかを段で確認 |
+| `slantedge` | [slantedge.png](samples/patterns/slantedge.png) | 傾けた境目。立ち上がりを画素より細かく確認 |
+| `raster` | [raster.png](samples/patterns/raster.png) | 一様な塗り。むら・純度・レベル確認 |
 
-サンプルを再生成する場合は、リポジトリのルートで次を実行します。
+この見本を再生成する場合は、リポジトリのルートで次を実行します。
+出力先は同梱物なので `samples/patterns/` です。
 
 ```sh
 python tools/generate_pattern_samples.py
 ```
 
-生成したものは `generated/` 直下へ出ます。ここは `.gitignore` の対象で、リポジトリには残りません。
-**作って捨てるものは `generated/`、リポジトリに同梱するものは `samples/`** と置き場を分けています。
+置き場は役割で分けています。**作って捨てるものは `generated/`（`.gitignore` の対象）、
+リポジトリに同梱するものは `samples/`** です。
 
 ### 参照用の RAW と manifest
 
@@ -291,6 +298,28 @@ v210 の幅は6の倍数、mipi10 は各プレーンの幅が4の倍数、とい
 
 既定では WUXGA（1920×1200）までです。10bit の 4K は1本で50MB近くになるため、
 使いたいときは `--max-pixels 8294400` を指定してください。
+
+### 条件を振ったサンプルの生成
+
+こちらは逆に、**1つのパターンを条件で振って** 量産します。
+一通り並べたサンプルでは1本ずつしか出ないので、「このサイズだから起きたのか」を確かめられません。
+
+```sh
+python tools/make_variant_raws.py                    # 3群すべて
+python tools/make_variant_raws.py --group smptebars  # 群を選ぶ
+python tools/make_variant_raws.py --dry-run          # 何を作るかだけ表示
+```
+
+| 群 | 何を振るか | 見たいこと |
+| --- | --- | --- |
+| `raster` | 塗りの色と振幅（15種）＋ 4:4:4 / 4:2:2 / 4:2:0 | むら・純度・レベル。あわせて「一様な面は間引いても変わらない」の確認 |
+| `smptebars` | 規格の解像度（QCIF〜4K UHD） | 幅・高さの端数（7等分の割り切れなさ、色差面の切り上げ）がサイズでどう出るか |
+| `resolution` | 解像系9パターン × 3サイズ × 3形式 | この種の絵は画素数で見え方が決まるので、1サイズでは足りない |
+
+`raster` 群には、同じ赤の塗りを 4:4:4 / 4:2:2 / 4:2:0 で出した3本が入ります。
+一様な面には色差の細かい変化が無いので、この3本は**同じ結果になるはず**です。
+差が出たら、それは間引きの損失ではなく色変換かビット詰めの誤りで、
+間引きのせいにできない絵として切り分けに使えます。
 
 ## テスト
 

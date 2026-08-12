@@ -592,3 +592,102 @@ def test_resolutioncard_has_wedges_in_the_corners_and_centre():
     ]
     for region in regions:
         assert region.min() == 0.0 and region.max() == 1.0
+
+
+def test_siemens_blanks_the_centre_at_the_nyquist_radius():
+    """中心の塞ぎが、1 周期 2 画素になる半径と一致すること."""
+    spokes = 36
+    img = render("siemens", 400, 400, {"spokes": spokes})[:, :, 0]
+    inner = spokes / np.pi  # 2 * pi * r / spokes == 2 となる r
+
+    # 塞いだ内側は地の色だけ
+    assert set(np.unique(img[199:201, 199:201]).tolist()) == {0.5}
+
+    # 境目のすぐ外側には白黒が現れる
+    x = int(200 + inner) + 2
+    assert img[200, x] in (0.0, 1.0)
+
+
+def test_siemens_has_the_requested_number_of_spokes():
+    """周を一周したときの明暗の対の数が spokes と合うこと."""
+    spokes = 24
+    img = render("siemens", 400, 400, {"spokes": spokes})[:, :, 0]
+    radius = 150.0
+    angles = np.linspace(0, 2 * np.pi, 4000, endpoint=False)
+    xs = np.clip((200 + radius * np.cos(angles)).astype(int), 0, 399)
+    ys = np.clip((200 + radius * np.sin(angles)).astype(int), 0, 399)
+    ring = img[ys, xs]
+    # 一周して戻るので、変化の回数は明暗の対の 2 倍
+    changes = int(np.count_nonzero(np.diff(np.concatenate([ring, ring[:1]])) != 0))
+    assert changes == spokes * 2
+
+
+def test_linepairs_uses_the_requested_line_widths():
+    """区画ごとに、指定した太さの線で縞になっていること."""
+    widths = [1, 2, 4]
+    img = render("linepairs", 300, 200, {"widths": widths})[:, :, 0]
+    columns = [round(i * 300 / len(widths)) for i in range(len(widths) + 1)]
+    for index, line in enumerate(widths):
+        x0 = columns[index] + 6
+        row = img[50, x0 : x0 + line * 6]
+        # 太さ line ごとに切り替わる = 変化の間隔が line
+        edges = np.flatnonzero(np.diff(row) != 0)
+        assert len(edges) >= 2
+        assert set(np.diff(edges).tolist()) == {line}
+
+
+def test_linepairs_rows_are_the_same_pattern_turned_sideways():
+    """上段が縦縞、下段が横縞であること."""
+    img = render("linepairs", 300, 200, {"widths": [2]})[:, :, 0]
+    top = img[40:60, 20:60]
+    bottom = img[140:160, 20:60]
+    assert (top == top[:1, :]).all()        # 縦縞なので行方向に一様
+    assert (bottom == bottom[:, :1]).all()  # 横縞なので列方向に一様
+
+
+def test_slantedge_keeps_away_from_the_ends():
+    """明暗が 0 と 1 に張り付かないこと."""
+    img = render("slantedge", 320, 240, {"low": 0.1, "high": 0.9})[:, :, 0]
+    assert img.min() >= 0.1 - 1e-6
+    assert img.max() <= 0.9 + 1e-6
+
+
+def test_slantedge_edge_carries_intermediate_values():
+    """境目が階段ではなく、被覆率の中間値を持つこと."""
+    img = render("slantedge", 320, 240, {"angle": 5.0})[:, :, 0]
+    middle = (img > 0.1 + 1e-3) & (img < 0.9 - 1e-3)
+    assert middle.any()
+    # 中間値は境目だけなので、面積のごく一部にとどまるはず
+    assert middle.mean() < 0.05
+
+
+def test_slantedge_tilts_both_ways():
+    """区画によって傾きの向きが反対であること."""
+    img = render("slantedge", 320, 240, {"angle": 10.0})[:, :, 0]
+    dark = img < 0.5
+
+    def top_edge_tilt(region: np.ndarray) -> int:
+        """矩形の上辺について、右側が左側よりどれだけ下がっているかを返す."""
+        # 区画は 160 x 120、矩形は中心から 30% なので x は 32〜128 の範囲にある
+        left = int(np.argmax(region[:, 45]))
+        right = int(np.argmax(region[:, 115]))
+        assert region[left, 45] and region[right, 115]  # 矩形の内側を見ていること
+        return right - left
+
+    assert top_edge_tilt(dark[0:120, 0:160]) * top_edge_tilt(dark[0:120, 160:320]) < 0
+
+
+def test_raster_fills_the_whole_frame_with_one_value():
+    img = render("raster", 64, 48, {"color": [1.0, 0.0, 0.0], "level": 0.75})
+    assert img.shape == (48, 64, 3)
+    assert np.array_equal(np.unique(img.reshape(-1, 3), axis=0), np.array([[0.75, 0.0, 0.0]], np.float32))
+
+
+def test_raster_defaults_to_white():
+    img = render("raster", 16, 16)
+    assert (img == 1.0).all()
+
+
+def test_raster_rejects_a_colour_that_is_not_three_values():
+    with pytest.raises(ValueError):
+        render("raster", 16, 16, {"color": [1.0, 0.0]})

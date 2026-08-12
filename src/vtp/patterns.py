@@ -1223,6 +1223,160 @@ def resolutioncard(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def siemens(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """中心へ向かって細くなる放射状のくさび（解像限界と折り返しの確認用）.
+
+    くさびは中心へ近づくほど詰まるので、**どの半径まで縞が分かれて見えるか**が
+    そのまま解像限界になります。限界を越えたところでは縞が消えるだけでなく、
+    渦のような模様が現れることがあります。これは折り返しで、
+    「見えなくなる」より「無いものが見える」ほうが厄介なので、ここで見ておきます。
+
+    中心近くは、この生成器の側でも表現できません。半径 r での 1 周期は
+    2πr / spokes 画素なので、2 画素を割る半径（r < spokes / π）から内側は
+    書いた時点で折り返しています。そこは灰色で塞いであります。
+    塞いだ内側に模様が出たら、それは表示側ではなく拡大処理の影響です。
+
+    ``spokes`` でくさびの本数（明暗の対の数）を指定します。
+    """
+    spokes = int(_opt(options, "spokes", 36))
+    background = float(_opt(options, "background", 0.5))
+    if spokes < 4:
+        raise ValueError(f"siemens の spokes は 4 以上にしてください（指定: {spokes}）")
+
+    xx, yy = _coords(width, height)
+    dx = xx - width / 2
+    dy = yy - height / 2
+    radius = np.hypot(dx, dy)
+
+    outer = min(width, height) / 2 - 1
+    inner = spokes / np.pi  # ここから内側は 1 周期が 2 画素を切る
+
+    value = (np.cos(np.arctan2(dy, dx) * spokes) >= 0).astype(np.float32)
+    img = _canvas(width, height, background)
+    ring = (radius >= inner) & (radius <= outer)
+    img[ring] = value[ring][:, None]
+    return img
+
+
+def linepairs(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """線幅ごとの縞を並べた区画（どの太さから潰れるかを段で読む）.
+
+    くさびが連続的に細くなるのに対し、こちらは**太さが飛び飛び**です。
+    「1 画素は駄目だが 2 画素なら出る」のように、境目を言葉にしやすくなります。
+
+    上段は縦縞、下段は横縞で、同じ太さを並べてあります。
+    向きで結果が変わるなら、原因は解像そのものではなく、
+    走査方向やインタレース、あるいは色差の間引き方向のほうです。
+
+    ``widths`` に線の太さ（画素）を並べて指定します。
+    """
+    widths = [int(w) for w in _opt(options, "widths", [1, 2, 3, 4, 6, 8])]
+    background = float(_opt(options, "background", 0.5))
+    if not widths or any(w < 1 for w in widths):
+        raise ValueError("linepairs の widths は 1 以上の値を並べてください")
+
+    img = _canvas(width, height, background)
+    xx, yy = _coords(width, height)
+    columns = _edges(width, len(widths))
+    rows = _edges(height, 2)
+    margin = max(1, min(width, height) // 64)
+
+    for index, line in enumerate(widths):
+        x0, x1 = columns[index] + margin, columns[index + 1] - margin
+        if x1 - x0 < 2:
+            continue
+        for row, axis in ((0, xx), (1, yy)):
+            y0, y1 = rows[row] + margin, rows[row + 1] - margin
+            if y1 - y0 < 2:
+                continue
+            # 区画の左上を起点にすることで、どの区画も白から始まります。
+            offset = axis[y0:y1, x0:x1] - (x0 if row == 0 else y0)
+            stripe = ((np.floor(offset) // line) % 2 == 0).astype(np.float32)
+            img[y0:y1, x0:x1, :] = stripe[:, :, None]
+    return img
+
+
+def slantedge(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """わずかに傾いた明暗の境目を 4 つ置いたもの（立ち上がりの確認用）.
+
+    真上や真横の境目は画素の並びと重なってしまうので、1 行だけ見ても
+    どこで切り替わったのかしか分かりません。少し傾けると、行ごとに
+    境目の位置が画素の内側でずれていきます。これを縦に集めると、
+    画素より細かい間隔で立ち上がりを並べ直せます。
+
+    傾きの境目は階段にせず、画素にかかった面積の割合で中間値を入れています。
+    ここに出る中間値は**ぼけではなく被覆率**です。混同すると、
+    元から入っている中間値をぼけと読み違えます。
+    面積は距離に比例させた近似で、傾きが小さいうちは十分実用になります。
+
+    明暗は 0 と 1 ではなく少し内側に置いてあります。端で張り付くと、
+    立ち上がりの足が切れて読めなくなるためです。
+    ``angle`` で傾き（度）、``low`` / ``high`` で明暗を指定します。
+    """
+    angle = float(_opt(options, "angle", 5.0))
+    low = float(_opt(options, "low", 0.1))
+    high = float(_opt(options, "high", 0.9))
+    if not 0.5 <= abs(angle) <= 45.0:
+        raise ValueError(f"slantedge の angle は 0.5〜45 度にしてください（指定: {angle}）")
+
+    img = _canvas(width, height, high)
+    xx, yy = _coords(width, height)
+    columns = _edges(width, 2)
+    rows = _edges(height, 2)
+    radians = np.deg2rad(angle)
+    cos, sin = np.cos(radians), np.sin(radians)
+
+    # 傾きの向きを変えた区画を並べます。傾ける向きで結果が変わるなら、
+    # 対称でない処理（片側にだけ寄る補間など）が入っています。
+    for row in range(2):
+        for column in range(2):
+            y0, y1 = rows[row], rows[row + 1]
+            x0, x1 = columns[column], columns[column + 1]
+            sign = 1.0 if (row + column) % 2 == 0 else -1.0
+            u = xx[y0:y1, x0:x1] - (x0 + x1) / 2
+            v = yy[y0:y1, x0:x1] - (y0 + y1) / 2
+            # 区画の中心まわりに座標を回してから、軸に沿った矩形として塗ります。
+            ru = u * cos + sign * v * sin
+            rv = -sign * u * sin + v * cos
+            half_w = (x1 - x0) * 0.3
+            half_h = (y1 - y0) * 0.3
+            # 矩形の内側で正になる距離。辺から離れるほど大きくなります。
+            depth = np.minimum(half_w - np.abs(ru), half_h - np.abs(rv))
+            coverage = np.clip(depth + 0.5, 0.0, 1.0).astype(np.float32)
+            img[y0:y1, x0:x1, :] = (high - (high - low) * coverage)[:, :, None]
+    return img
+
+
+def raster(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """画面全体を 1 色で塗る（むら・純度・レベルの確認用）.
+
+    形が無いぶん、形では見えないものが見えます。
+
+    - **むら** : 一様なはずの面に濃淡や色の傾きが出れば、それは表示側か経路の偏りです
+    - **純度** : 単色で塗ったときに他の成分が混じっていないか
+    - **レベル**: 面全体が同じコード値なので、狙った値になっているかを 1 点読めば分かります
+
+    もう 1 つ、**色差を間引いても値が変わらない**という性質があります。
+    一様な面には色差の細かい変化が無いので、4:2:0 でも 4:4:4 でも同じ結果になるはずです。
+    ここに差が出たら、それは間引きによる損失ではなく色変換かビット詰めの誤りです。
+    間引きのせいにできない絵なので、切り分けに使えます。
+
+    ``color`` に [R, G, B]（各 0〜1）、``level`` に振幅を指定します。
+    既定は白（[1, 1, 1] × 1.0）です。
+    """
+    color = _opt(options, "color", [1.0, 1.0, 1.0])
+    level = float(_opt(options, "level", 1.0))
+
+    values = np.asarray(color, dtype=np.float32)
+    if values.shape != (3,):
+        raise ValueError(f"raster の color は [R, G, B] の 3 つで指定してください（指定: {color}）")
+    values = np.clip(values * level, 0.0, 1.0)
+
+    img = np.empty((height, width, 3), dtype=np.float32)
+    img[:] = values
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -1260,6 +1414,10 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "splitsteps": splitsteps,
     "geometrycard": geometrycard,
     "resolutioncard": resolutioncard,
+    "siemens": siemens,
+    "linepairs": linepairs,
+    "slantedge": slantedge,
+    "raster": raster,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)
