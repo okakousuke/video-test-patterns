@@ -799,3 +799,76 @@ def test_monoscope_corner_stars_are_not_cut_by_the_border():
 def test_monoscope_is_repeatable():
     """同じ指定なら 1 画素まで同じものが出ること（字形をコードに持つため）."""
     assert np.array_equal(render("monoscope", 400, 300), render("monoscope", 400, 300))
+
+
+def test_digitalcard_pairs_a_luma_stripe_with_a_chroma_stripe():
+    """同じ間隔の縞が、白黒の組と色差の組で並んでいること."""
+    img = render("digitalcard", 800, 600, {"pitch": 2})
+    luma = img[130, 40:56]
+    chroma = img[130, 420:436]
+
+    assert {tuple(px) for px in luma} == {(1.0, 1.0, 1.0), (0.0, 0.0, 0.0)}
+    assert {tuple(px) for px in chroma} == {(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)}
+    # 位相が揃っていること（どちらも区画の左端から始まる）
+    assert np.array_equal(luma[:, 0] > 0.5, chroma[:, 0] > 0.5)
+
+
+def test_digitalcard_lsb_steps_span_one_code_value_each():
+    """最下位ビットの階段が、8bit ぶんと 10bit ぶんの刻みになっていること."""
+    steps = 8
+    img = render("digitalcard", 800, 600, {"steps": steps})[:, :, 0]
+
+    eight = np.unique(img[350, 45:375])
+    ten = np.unique(img[350, 425:755])
+    assert len(eight) == steps
+    assert len(ten) == steps
+    # 隣り合う段の差が、それぞれ 1/255 と 1/1023
+    assert np.allclose(np.diff(eight), 1.0 / 255.0, atol=1e-6)
+    assert np.allclose(np.diff(ten), 1.0 / 1023.0, atol=1e-6)
+    # どちらも中央の灰色をまたぐ
+    assert eight[0] < 0.5 < eight[-1]
+    assert ten[0] < 0.5 < ten[-1]
+
+
+def test_digitalcard_ruler_marks_every_tick():
+    """目盛りが指定した間隔で立っていること."""
+    tick = 10
+    img = render("digitalcard", 800, 600, {"tick": tick})[:, :, 0]
+    top = int(600 * 0.02)
+    row = img[top + 1, :]
+    marked = set(np.flatnonzero(row >= 1.0).tolist())
+    assert {0, tick, tick * 2, tick * 3}.issubset(marked)
+    # 目盛りの間は立っていない
+    assert (tick // 2) not in marked
+
+
+def test_digitalcard_ruler_is_taller_every_fifth_and_tenth():
+    """5 本目・10 本目が長いこと（数えるときに目が迷わないように）."""
+    img = render("digitalcard", 800, 600, {"tick": 10})[:, :, 0]
+    column_height = lambda x: int((img[int(600 * 0.02) : int(600 * 0.085), x] >= 1.0).sum())
+    assert column_height(100) > column_height(50) > column_height(10)
+
+
+def test_digitalcard_marks_the_exact_corners():
+    """四隅そのものに印があること（1 画素欠けても分かる）."""
+    img = render("digitalcard", 400, 300)[:, :, 0]
+    assert img[0, 0] == 1.0
+    assert img[0, -1] == 1.0
+    assert img[-1, 0] == 1.0
+    assert img[-1, -1] == 1.0
+
+
+def test_digitalcard_parity_band_splits_rows_and_columns():
+    """行方向と列方向の 1 画素縞が、左右に分かれていること."""
+    img = render("digitalcard", 800, 600)[:, :, 0]
+    y0 = int(600 * 0.69) + 4
+    left = img[y0 : y0 + 8, 40:80]
+    right = img[y0 : y0 + 8, 420:460]
+    assert (left == left[:, :1]).all()   # 横縞なので列方向に一様
+    assert (right == right[:1, :]).all()  # 縦縞なので行方向に一様
+
+
+def test_digitalcard_rejects_settings_it_cannot_draw():
+    for bad in ({"tick": 1}, {"pitch": 1}, {"steps": 1}, {"chroma_on": [1.0, 0.0]}):
+        with pytest.raises(ValueError):
+            render("digitalcard", 200, 200, bad)

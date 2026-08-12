@@ -1599,6 +1599,184 @@ def monoscope(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def digitalcard(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """伝送そのものを見るための総合カード（この実装の自作構成）.
+
+    古典的なテストカードはアナログ時代のものなので、
+    「色差をいくつ間引いたか」「何ビット残っているか」「行が落ちていないか」
+    を見る要素を持っていません。`monoscope` がその系統をなぞるのに対し、
+    こちらは**デジタルの経路でしか意味を持たない**要素だけを集めています。
+
+    入っている要素と、それぞれで分かること。
+
+    - 目盛り     : 端から何画素目かを絵の中から直接読めます。切り取りや拡大の量が数で出ます
+    - 隅の直角   : 四隅そのものの位置。1 画素でも欠ければ角が欠けます
+    - 輝度 / 色差: 同じ間隔の縞を、白黒の組と赤青の組で並べます。
+                   4:2:0 を通すと赤青側だけが潰れるので、間引きの有無がその場で分かります
+    - 色差の位相 : 同じ色の境目を、偶数列と奇数列に置きます。
+                   間引いたあとで境目がどちらへ寄るかで、色差の位置合わせが読めます
+    - 最下位ビット: 1 コード値ずつの階段を、8bit ぶんと 10bit ぶんで並べます。
+                   8bit の経路では 10bit 側が段にならず、実際に何ビット残っているかが出ます
+    - 行と列の抜け: 1 画素おきの横縞と縦縞。行や列が落ちる・重なると、縞が消えるか位相が飛びます
+
+    色差の組は「輝度が近く色差が遠い」ことが要ります。ここでは赤と青を既定にしています。
+    厳密に輝度を揃えることはできません。輝度の重みは matrix ごとに違い、
+    このモジュールは matrix を知らないためです（知ってしまうと段の分離が崩れます）。
+    揃えるのではなく、**白黒の組と比べて輝度差が小さい**ことで用が足ります。
+
+    ``tick`` で目盛りの間隔、``pitch`` で縞の間隔、``chroma_on`` / ``chroma_off`` で
+    色差の組、``steps`` で最下位ビットの段数を指定します。
+    """
+    background = float(_opt(options, "background", 0.5))
+    tick = int(_opt(options, "tick", 10))
+    pitch = int(_opt(options, "pitch", 2))
+    steps = int(_opt(options, "steps", 8))
+    chroma_on = np.asarray(_opt(options, "chroma_on", [1.0, 0.0, 0.0]), dtype=np.float32)
+    chroma_off = np.asarray(_opt(options, "chroma_off", [0.0, 0.0, 1.0]), dtype=np.float32)
+    if tick < 2:
+        raise ValueError(f"digitalcard の tick は 2 以上にしてください（指定: {tick}）")
+    if pitch < 2:
+        raise ValueError(f"digitalcard の pitch は 2 以上にしてください（指定: {pitch}）")
+    if steps < 2:
+        raise ValueError(f"digitalcard の steps は 2 以上にしてください（指定: {steps}）")
+    if chroma_on.shape != (3,) or chroma_off.shape != (3,):
+        raise ValueError("digitalcard の chroma_on / chroma_off は [R, G, B] の 3 つで指定してください")
+
+    img = _canvas(width, height, background)
+    xx, yy = _coords(width, height)
+    short = min(width, height)
+    margin = max(2, width // 25)
+
+    band_scale = max(1, int(short * 0.038) // _DIGIT_HEIGHT)
+
+    def rows(top: float, bottom: float, number: int = 0) -> tuple[int, int] | None:
+        """帯の範囲を返し、番号を付けておく。
+
+        帯に番号があると、説明の側から「2 番の帯」と指せます。
+        字形は数字しか持っていないので、名前ではなく番号にしています。
+        """
+        y0, y1 = int(height * top), int(height * bottom)
+        if y1 - y0 < 2:
+            return None
+        if number:
+            _, text_rows = _text_size(str(number), band_scale)
+            label_top = y0 - text_rows - max(1, short // 300)
+            if label_top >= 0:
+                _draw_text(img, str(number), margin, label_top, band_scale, 1.0)
+        return y0, y1
+
+    def outline(x0: int, y0: int, x1: int, y1: int) -> None:
+        """帯を細い線で囲む（地と見分けが付かない中身のときに、場所を示すため）."""
+        line = max(1, short // 400)
+        img[max(0, y0 - line) : y0, x0:x1, :] = np.float32(1.0)
+        img[y1 : min(height, y1 + line), x0:x1, :] = np.float32(1.0)
+        img[y0:y1, max(0, x0 - line) : x0, :] = np.float32(1.0)
+        img[y0:y1, x1 : min(width, x1 + line), :] = np.float32(1.0)
+
+    # --- 上端の目盛り（端から何画素目かを絵から読めます） ---
+    ruler = rows(0.02, 0.085)
+    if ruler:
+        y0, y1 = ruler
+        span = y1 - y0
+        scale = max(1, int(short * 0.022) // _DIGIT_HEIGHT)
+        for x in range(0, width, tick):
+            # 5 本目を長く、10 本目をさらに長くします。数えるとき目が迷わないようにです。
+            if x % (tick * 10) == 0:
+                length = span
+            elif x % (tick * 5) == 0:
+                length = span * 2 // 3
+            else:
+                length = span // 3
+            img[y0 : y0 + max(1, length), x : x + 1, :] = np.float32(1.0)
+
+        label_top = y1 + max(1, short // 200)
+        for x in range(0, width, tick * 10):
+            text = str(x)
+            text_width, text_rows = _text_size(text, scale)
+            if x + text_width < width and label_top + text_rows < height:
+                _draw_text(img, text, x + 1, label_top, scale, 1.0)
+
+    # --- 輝度の縞と色差の縞（同じ間隔で並べます） ---
+    area = rows(0.15, 0.34, 1)
+    if area:
+        y0, y1 = area
+        middle = width // 2
+        left0, left1 = margin, middle - margin // 2
+        right0, right1 = middle + margin // 2, width - margin
+        for x0, x1, on, off in (
+            (left0, left1, np.float32([1.0, 1.0, 1.0]), np.float32([0.0, 0.0, 0.0])),
+            (right0, right1, chroma_on, chroma_off),
+        ):
+            if x1 - x0 < 2:
+                continue
+            # 区画の左端を起点にすると、左右の縞の位相が揃って比べられます。
+            stripe = ((np.floor(xx[y0:y1, x0:x1]) - x0) % pitch) < (pitch / 2)
+            block = np.where(stripe[:, :, None], on, off).astype(np.float32)
+            img[y0:y1, x0:x1, :] = block
+
+    # --- 色差の位相（同じ境目を偶数列と奇数列に置きます） ---
+    area = rows(0.37, 0.47, 2)
+    if area:
+        y0, y1 = area
+        block = max(4, (width - margin * 2) // 8)
+        x = margin
+        parity = 0
+        while x + block <= width - margin:
+            # 境目を偶数列・奇数列へ交互に置きます。間引いたあとで寄る向きが変わります。
+            edge = x + block // 2
+            edge += (parity - edge % 2) % 2
+            img[y0:y1, x:edge, :] = chroma_on
+            img[y0:y1, edge : x + block, :] = chroma_off
+            x += block
+            parity ^= 1
+
+    # --- 最下位ビットの階段（8bit ぶんと 10bit ぶん） ---
+    area = rows(0.50, 0.66, 3)
+    if area:
+        y0, y1 = area
+        middle = width // 2
+        for x0, x1, unit in (
+            (margin, middle - margin // 2, 1.0 / 255.0),
+            (middle + margin // 2, width - margin, 1.0 / 1023.0),
+        ):
+            if x1 - x0 < steps:
+                continue
+            cuts = _edges(x1 - x0, steps)
+            for index in range(steps):
+                # 中央の灰色から 1 コード値ずつ。8bit の経路では 10bit 側が段になりません。
+                value = 0.5 + (index - (steps - 1) / 2.0) * unit
+                img[y0:y1, x0 + cuts[index] : x0 + cuts[index + 1], :] = np.float32(value)
+            # 1 コード値の差は目では追えません。囲っておかないと、どこを読めばよいか分かりません。
+            outline(x0, y0, x1, y1)
+
+    # --- 行と列の抜け（1 画素おきの横縞・縦縞） ---
+    area = rows(0.69, 0.90, 4)
+    if area:
+        y0, y1 = area
+        middle = width // 2
+        left0, left1 = margin, middle - margin // 2
+        right0, right1 = middle + margin // 2, width - margin
+        if left1 - left0 >= 2:
+            horizontal = ((np.floor(yy[y0:y1, left0:left1]) - y0) % 2) < 1
+            img[y0:y1, left0:left1, :] = horizontal[:, :, None].astype(np.float32)
+        if right1 - right0 >= 2:
+            vertical = ((np.floor(xx[y0:y1, right0:right1]) - right0) % 2) < 1
+            img[y0:y1, right0:right1, :] = vertical[:, :, None].astype(np.float32)
+
+    # --- 隅の直角（四隅そのものの位置） ---
+    arm = max(3, short // 20)
+    for y0, x0, dy, dx in (
+        (0, 0, 1, 1),
+        (0, width - 1, 1, -1),
+        (height - 1, 0, -1, 1),
+        (height - 1, width - 1, -1, -1),
+    ):
+        for step in range(arm):
+            img[y0, x0 + dx * step, :] = np.float32(1.0)
+            img[y0 + dy * step, x0, :] = np.float32(1.0)
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -1641,6 +1819,7 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "slantedge": slantedge,
     "raster": raster,
     "monoscope": monoscope,
+    "digitalcard": digitalcard,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)

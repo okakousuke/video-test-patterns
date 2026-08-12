@@ -72,6 +72,7 @@ PATTERNS = (
     "slantedge",
     "raster",
     "monoscope",
+    "digitalcard",
 )
 
 # 実際に使われている画面・映像の解像度から選びます。

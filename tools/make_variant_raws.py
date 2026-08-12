@@ -175,7 +175,7 @@ def raster_jobs(width: int, height: int) -> list[Job]:
 
 
 # サイズだけを振るカード。形式は 1 つに固定するので、違いはサイズだけになります。
-CARD_PATTERNS = ("smptebars", "monoscope")
+CARD_PATTERNS = ("smptebars", "monoscope", "digitalcard")
 
 
 def cards_jobs(max_pixels: int) -> list[Job]:
