@@ -47,6 +47,8 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | 色相の連続性・色域 | `rainbow` |
 | 量子化の段差（バンディング） | `shallowramp`, `stepmatrix` |
 | 画素の縦横比 | `square`, `circles` |
+| 向きごとの解像限界 | `wedge` |
+| ひととおりまとめて | `testcard` |
 
 ### 作成できるパターン一覧
 
@@ -81,6 +83,8 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `triangleramp` | [triangleramp.png](samples/patterns/triangleramp.png) | 上がりと下がりで挙動が違わないか確認 |
 | `square` | [square.png](samples/patterns/square.png) | 画素の縦横比確認 |
 | `stepmatrix` | [stepmatrix.png](samples/patterns/stepmatrix.png) | 256階調を格子に並べて多階調を面で確認 |
+| `wedge` | [wedge.png](samples/patterns/wedge.png) | 向きごとの解像限界（水平・垂直を分けて確認） |
+| `testcard` | [testcard.png](samples/patterns/testcard.png) | 総合パターン。1枚で画角・縦横比・解像・色順・階調 |
 
 サンプルを再生成する場合は、リポジトリのルートで次を実行します。
 

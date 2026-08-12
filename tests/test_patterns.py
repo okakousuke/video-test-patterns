@@ -341,3 +341,90 @@ def test_stepmatrix_increases_in_raster_order():
     img = render("stepmatrix", 160, 160, {"cols": 4, "rows": 4})[:, :, 0]
     assert img[20, 20] < img[20, 60] < img[20, 100] < img[20, 140]
     assert img[20, 140] < img[60, 20]
+
+
+# --- 総合パターン ---
+
+
+def test_wedge_is_finer_towards_the_centre():
+    """中心に近いほど線の間隔が詰まること."""
+    img = render("wedge", 400, 400, {"lines": 10})[:, :, 0]
+    row = img[200]
+    changes = lambda a: int(np.count_nonzero(np.diff(a) != 0))
+    near = row[150:190]    # 中心寄り
+    far = row[60:100]      # 外寄り
+    assert changes(near) > changes(far)
+
+
+def test_wedge_directions_select_sectors():
+    """direction で使う方向を選べること."""
+    horizontal = render("wedge", 400, 400, {"direction": "horizontal"})[:, :, 0]
+    vertical = render("wedge", 400, 400, {"direction": "vertical"})[:, :, 0]
+    # 水平だけのときは、左右に線があって上下は地のまま
+    assert horizontal[200, 60] in (0.0, 1.0)
+    assert vertical[200, 60] == 0.5
+    assert vertical[60, 200] in (0.0, 1.0)
+    assert horizontal[60, 200] == 0.5
+
+
+def test_wedge_rejects_bad_radii():
+    with pytest.raises(ValueError):
+        render("wedge", 64, 64, {"inner": 0.5, "outer": 0.2})
+
+
+def test_testcard_contains_its_parts():
+    """外周ブロック・円・くさび・色帯・階調帯が揃っていること."""
+    img = render("testcard", 640, 480)
+    gray = img[:, :, 0]
+
+    # 外周は白と黒の交互ブロック
+    top = gray[2, :]
+    assert set(np.unique(top).tolist()) == {0.0, 1.0}
+
+    # 中心付近にくさびの白黒がある
+    centre = gray[200:280, 280:360]
+    assert centre.min() == 0.0 and centre.max() == 1.0
+
+    # 色のついた画素（色帯）が存在する
+    coloured = np.any(np.abs(img[:, :, 0] - img[:, :, 2]) > 0.1)
+    assert coloured
+
+    # 地は中間の明るさ（格子線を避けるため、広い範囲の中央値で見る）
+    assert 0.4 < float(np.median(gray[100:380, 30:120])) < 0.6
+
+
+def test_testcard_geometry_is_symmetric():
+    """幾何の部分が上下左右とも対称であること.
+
+    中心がずれていれば、対称なはずのものが崩れて見える。それが読めるように、
+    円・くさび・格子・外周ブロックはすべて中心を基準に置いてある。
+
+    色帯と階調帯は順序のあるものなので対称ではない。ここでは対象外にする。
+    """
+    img = render("testcard", 640, 480)[:, :, 0]
+    middle = img[140:340, :]   # 帯を挟まない高さ
+    assert np.allclose(middle, middle[:, ::-1], atol=1e-6)
+    assert np.allclose(middle, middle[::-1, :], atol=1e-6)
+
+
+def test_testcard_border_blocks_match_on_both_sides():
+    """外周ブロックが左右・上下で同じ並びになること.
+
+    端から数えて何ブロック欠けたかを見るので、左右で白黒が入れ替わっていると
+    同じ数え方ができない。
+    """
+    img = render("testcard", 640, 480)[:, :, 0]
+    assert np.allclose(img[0], img[0][::-1], atol=1e-6)
+    assert np.allclose(img[:, 0], img[:, 0][::-1], atol=1e-6)
+
+
+def test_testcard_has_no_text_glyphs():
+    """文字を描かないこと（フォント依存を避ける方針の確認）.
+
+    文字が入ると環境でフォントが変わり、同じ条件でも絵が変わってしまう。
+    ここでは「描画に使う値が限られた集合に収まる」ことで、
+    アンチエイリアスされた文字が無いことを確かめる。
+    """
+    img = render("testcard", 320, 240, {"steps": 11})
+    values = np.unique(img)
+    assert len(values) < 40

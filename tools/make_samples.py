@@ -54,6 +54,8 @@ PATTERNS = (
     "triangleramp",
     "square",
     "stepmatrix",
+    "wedge",
+    "testcard",
 )
 
 # 実際に使われている画面・映像の解像度から選びます。

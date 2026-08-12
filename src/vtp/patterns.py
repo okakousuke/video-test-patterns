@@ -702,6 +702,179 @@ def stepmatrix(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def wedge(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """一点へ収束する線の束（向きごとの解像限界の確認用）.
+
+    中心から放射状に線を引くので、中心へ近づくほど線の間隔が詰まります。
+    どこで線がつながって見えるかが、その向きの解像限界です。
+
+    ``radial`` が全周に線を回すのに対し、こちらは上下左右の 4 方向に分けて置きます。
+    水平方向と垂直方向で限界が違う（片方だけ先に潰れる）ことがあるためです。
+
+    ``lines`` は 1 つのくさびの本数、``direction`` は ``all`` / ``horizontal`` /
+    ``vertical``、``inner`` と ``outer`` は短辺に対する内外の半径比です。
+    """
+    lines = int(_opt(options, "lines", 12))
+    direction = str(_opt(options, "direction", "all"))
+    inner_ratio = float(_opt(options, "inner", 0.05))
+    outer_ratio = float(_opt(options, "outer", 0.46))
+    background = float(_opt(options, "background", 0.5))
+    if lines < 2:
+        raise ValueError("wedge の lines は 2 以上にしてください")
+    if direction not in ("all", "horizontal", "vertical"):
+        raise ValueError(f"wedge の direction は all / horizontal / vertical です（指定: {direction}）")
+    if not 0.0 <= inner_ratio < outer_ratio:
+        raise ValueError("wedge は 0 <= inner < outer にしてください")
+
+    xx, yy = _coords(width, height)
+    cx, cy = width / 2.0, height / 2.0
+    dx, dy = xx - cx, yy - cy
+
+    radius = np.sqrt(dx * dx + dy * dy)
+    angle = np.arctan2(dy, dx)
+    short = min(width, height)
+
+    # くさびは中心を挟んだ扇形。半角 22.5 度ずつ取り、中心付近は空けます。
+    half = np.pi / 8.0
+    horizontal = (np.abs(angle) < half) | (np.abs(angle) > np.pi - half)
+    vertical = np.abs(np.abs(angle) - np.pi / 2.0) < half
+
+    if direction == "horizontal":
+        sector = horizontal
+    elif direction == "vertical":
+        sector = vertical
+    else:
+        sector = horizontal | vertical
+
+    # 角度に対して等間隔に線を置くと、中心へ近づくほど間隔が詰まります。
+    # cos を使うのは、上下左右のどちらへ折り返しても同じ形になるようにするためです。
+    # sin（奇関数）だと鏡像で位相が反転し、中心がずれているのか縞がずれているのかを
+    # 見分けられなくなります。lines * 2 は必ず偶数なので、左右の折り返しでも一致します。
+    stripes = (np.cos(angle * lines * 2.0) > 0.0).astype(np.float32)
+    band = sector & (radius > short * inner_ratio) & (radius < short * outer_ratio)
+
+    value = np.full((height, width), background, dtype=np.float32)
+    value[band] = stripes[band]
+    return _gray(value)
+
+
+def testcard(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """1 枚に確認要素をまとめた総合パターン（この実装の自作構成）.
+
+    この種のパターンが共通して使う**部品**を組み合わせていますが、配置と比率は自分で決めたものです。
+    特定の意匠を写したものではなく、文字・数字・ロゴは入れません
+    （文字を入れるとフォントに依存し、環境で結果が変わるためでもあります）。
+
+    入っている部品と、それぞれで見るもの。
+
+    - 外周の交互ブロック : オーバースキャン。端の何ブロックが欠けたかで切れ量が読めます
+    - 中央の円           : 画素の縦横比。楕円なら縦横比が崩れています
+    - 中心のくさび       : 向きごとの解像限界。水平と垂直で違うことがあります
+    - 格子               : レンズ歪み・射影変換のずれ
+    - 上の色帯           : 色順とチャンネルの入れ替わり
+    - 下の階調帯         : 黒つぶれ・白飛び
+
+    ``background`` で地の明るさ、``blocks`` で外周ブロックの数、``grid`` で格子の間隔、
+    ``steps`` で階調帯の段数を指定します。
+    """
+    background = float(_opt(options, "background", 0.5))
+    blocks = int(_opt(options, "blocks", 16))
+    grid_step = int(_opt(options, "grid", max(8, min(width, height) // 12)))
+    steps = int(_opt(options, "steps", 11))
+    if blocks < 2:
+        raise ValueError("testcard の blocks は 2 以上にしてください")
+    if steps < 2:
+        raise ValueError("testcard の steps は 2 以上にしてください")
+
+    img = _canvas(width, height, background)
+    xx, yy = _coords(width, height)
+    cx, cy = width / 2.0, height / 2.0
+    short = min(width, height)
+    thin = max(1, short // 400)
+
+    # --- 格子（地の上に薄く） ---
+    # 画面の端ではなく中心を基準に刻みます。端起点だと左右で位相がずれ、
+    # 「中心からどれだけ離れているか」を数えられません。中心にも線が来ます。
+    def lines_from_centre(coordinate: np.ndarray, centre: float) -> np.ndarray:
+        offset = np.mod(coordinate - centre + grid_step / 2.0, grid_step) - grid_step / 2.0
+        return np.abs(offset) < thin / 2.0 + 0.5
+
+    grid_mask = lines_from_centre(xx, cx) | lines_from_centre(yy, cy)
+    img[grid_mask] = np.float32(background * 0.55)
+
+    # --- 中心のくさび（帯にかからない大きさに収める） ---
+    wedges = wedge(width, height, {
+        "lines": int(_opt(options, "wedge_lines", 10)),
+        "inner": 0.045,
+        "outer": 0.22,
+        "background": background,
+    })[:, :, 0]
+    drawn = wedges != np.float32(background)
+    img[drawn] = wedges[drawn][:, None]
+
+    # --- 中央の円 ---
+    circle_ratio = 0.44
+    radius = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
+    ring = max(1.0, short / 300.0)
+    img[np.abs(radius - short * circle_ratio) < ring] = 1.0
+
+    # --- 色帯と階調帯。円の内側に収まる幅で置きます ---
+    band = max(2, short // 16)
+    offset = short * 0.32
+    # 円の中心からその高さでの弦の半分。ここに収めれば円をはみ出しません。
+    half_span = float(np.sqrt(max(0.0, (short * circle_ratio) ** 2 - offset ** 2)))
+    x0 = max(0, int(cx - half_span))
+    x1 = min(width, int(cx + half_span))
+
+    def outline(y0: int, y1: int) -> None:
+        """帯の外周に細い線を引く。
+
+        地が中間の灰色なので、階調帯の真ん中あたりは地と同じ明るさになり、
+        枠が無いと帯がどこまでか読めなくなる。
+        """
+        edge = max(1, thin)
+        dark = np.float32(background * 0.35)
+        img[y0 - edge : y0, x0:x1, :] = dark
+        img[y1 : y1 + edge, x0:x1, :] = dark
+        img[y0 - edge : y1 + edge, x0 - edge : x0, :] = dark
+        img[y0 - edge : y1 + edge, x1 : x1 + edge, :] = dark
+
+    top0 = max(1, int(cy - offset - band / 2))
+    edges = [x0 + round(i * (x1 - x0) / 8) for i in range(9)]
+    for i in range(8):
+        img[top0 : top0 + band, edges[i] : edges[i + 1], :] = BAR_COLORS[i] * 0.75
+    outline(top0, top0 + band)
+
+    bottom0 = min(height - band - 1, int(cy + offset - band / 2))
+    step_edges = [x0 + round(i * (x1 - x0) / steps) for i in range(steps + 1)]
+    for i in range(steps):
+        img[bottom0 : bottom0 + band, step_edges[i] : step_edges[i + 1], :] = np.float32(
+            i / (steps - 1)
+        )
+    outline(bottom0, bottom0 + band)
+
+    # --- 外周の交互ブロック（いちばん外側なので最後に描く） ---
+    # 端ではなく中心から数えて色を決めます。端起点だと、ブロックが偶数個のときに
+    # 左右（上下）で白黒が入れ替わり、「端から何ブロック欠けたか」を
+    # 左右で同じように数えられなくなります。
+    thickness = max(1, short // 40)
+    step = max(1, round(width / blocks))
+
+    def alternating(count: int, centre: float) -> np.ndarray:
+        index = np.floor(np.abs(np.arange(count) + 0.5 - centre) / step)
+        return np.where(index % 2 == 0, 1.0, 0.0).astype(np.float32)
+
+    along_x = alternating(width, cx)
+    along_y = alternating(height, cy)
+
+    img[:thickness, :, :] = along_x[None, :, None]
+    img[height - thickness :, :, :] = along_x[None, :, None]
+    img[:, :thickness, :] = along_y[:, None, None]
+    img[:, width - thickness :, :] = along_y[:, None, None]
+
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -729,6 +902,8 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "triangleramp": triangleramp,
     "square": square,
     "stepmatrix": stepmatrix,
+    "wedge": wedge,
+    "testcard": testcard,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)
