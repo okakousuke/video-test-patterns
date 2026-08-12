@@ -13,8 +13,20 @@ namespace RawInspector.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
+    // 上のほうを厚くしてあります。ここで見たいものは 1 画素の単位で決まっているためです。
+    // hatch の 1 画素縞、linepairs の線幅 1、digitalcard の目盛りと 1 画素おきの縞、
+    // そして 4:2:0 の色差ブロック（2 x 2）。100% では画面の 1 点なので、
+    // 出ているのか出ていないのかを目で確かめられません。
+    // 1600% なら 1 画素が 16 点、色差ブロックが 32 点角になり、そこで初めて数えられます。
+    // マウスで 1 画素を狙うときも、的が 1 点か 16 点かで確実さが変わります。
     private static readonly double[] ScaleSteps =
-        [10, 20, 25, 30, 40, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400];
+    [
+        10, 20, 25, 30, 40, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400,
+        500, 600, 800, 1000, 1200, 1600,
+    ];
+
+    private const double MinScale = 10;
+    private const double MaxScale = 1600;
 
     private static readonly string LastFolderFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -344,6 +356,16 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
+        // 縮小しているときだけ出します。等倍より上は画素が増えるだけなので、
+        // 見えているものと入っているものはずれません。
+        if (_scalePercent < 100)
+        {
+            lines.Add("");
+            lines.Add($"※ いまは {_scalePercent:0.#}% で縮小して出しています。");
+            lines.Add("   最近傍で間引いて表示するので、1画素の線や点は画面から消えることがあります。");
+            lines.Add("   消えているのは表示のせいで、RAWから無くなったわけではありません。等倍以上で確かめてください。");
+        }
+
         if (IsInterpretationOverridden)
         {
             lines.Add("");
@@ -555,11 +577,13 @@ public sealed class MainViewModel : ObservableObject
         get => _scalePercent;
         set
         {
-            var clamped = Math.Clamp(Math.Round(value, 2), 10, 400);
+            var clamped = Math.Clamp(Math.Round(value, 2), MinScale, MaxScale);
             if (!Set(ref _scalePercent, clamped)) return;
             Raise(nameof(ScaledWidth));
             Raise(nameof(ScaledHeight));
             Raise(nameof(ScaleText));
+            // 縮小しているときは絵から画素が落ちます。作り方の説明にもそれを出します。
+            UpdatePreviewRecipe();
         }
     }
 
