@@ -372,28 +372,12 @@
               </Border>
             </StackPanel>
 
-            <!-- 2段目: 読み方の設定と書き出し。
-                 読み方（matrix / range / 成分 / 色差）を左、書き出しを右に横並びにします。
+            <!-- 2段目: 読み方の設定。
+                 成分はRGBでもY'CbCrでも必ず使うので左端に固定します。
+                 色モデル次第で使えなくなる matrix / range と色差の戻し方は、その右へ置きます。
+                 共通のものを動かない位置に置いておくと、選んだRAWによって探し直さずに済みます。
                  使えない条件のグループも Hidden で場所を確保し、位置を動かしません。 -->
             <StackPanel Orientation="Horizontal">
-              <Border Style="{StaticResource ToolGroup}"
-                      Visibility="{Binding IsYcbcrSelected, Converter={StaticResource BoolToHidden}}">
-                <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="matrix" VerticalAlignment="Center" Margin="2,0,4,0"
-                             Foreground="{StaticResource MutedText}" />
-                  <ComboBox ItemsSource="{Binding MatrixOptions}" SelectedItem="{Binding SelectedMatrix}"
-                            Width="70" Margin="0,0,8,0" VerticalAlignment="Center"
-                            ToolTip="RGBへ戻すときの変換係数です。manifestと違う値にすると色相と明るさが変わります。" />
-                  <TextBlock Text="range" VerticalAlignment="Center" Margin="0,0,4,0"
-                             Foreground="{StaticResource MutedText}" />
-                  <ComboBox ItemsSource="{Binding RangeOptions}" SelectedItem="{Binding SelectedRange}"
-                            Width="68" Margin="0,0,6,0" VerticalAlignment="Center"
-                            ToolTip="コード値の使用範囲です。manifestと違う値にすると黒浮きや白飛びが出ます。" />
-                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}" Margin="0"
-                          ToolTip="matrix・range・成分・色差の戻し方を、manifestに記録された条件へ戻します。" />
-                </StackPanel>
-              </Border>
-
               <Border Style="{StaticResource ToolGroup}">
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="成分" VerticalAlignment="Center" Margin="2,0,6,0"
@@ -410,6 +394,24 @@
                   <RadioButton Content="{Binding ThirdChannelLabel}" GroupName="Channel" Style="{StaticResource ToolToggle}"
                                Margin="0" IsChecked="{Binding IsThirdChannel, Mode=TwoWay}"
                                ToolTip="第3成分だけを濃淡で表示します。" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource ToolGroup}"
+                      Visibility="{Binding IsYcbcrSelected, Converter={StaticResource BoolToHidden}}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="matrix" VerticalAlignment="Center" Margin="2,0,4,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <ComboBox ItemsSource="{Binding MatrixOptions}" SelectedItem="{Binding SelectedMatrix}"
+                            Width="70" Margin="0,0,8,0" VerticalAlignment="Center"
+                            ToolTip="RGBへ戻すときの変換係数です。manifestと違う値にすると色相と明るさが変わります。" />
+                  <TextBlock Text="range" VerticalAlignment="Center" Margin="0,0,4,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <ComboBox ItemsSource="{Binding RangeOptions}" SelectedItem="{Binding SelectedRange}"
+                            Width="68" Margin="0,0,6,0" VerticalAlignment="Center"
+                            ToolTip="コード値の使用範囲です。manifestと違う値にすると黒浮きや白飛びが出ます。" />
+                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}" Margin="0"
+                          ToolTip="matrix・range・成分・色差の戻し方を、manifestに記録された条件へ戻します。" />
                 </StackPanel>
               </Border>
 
