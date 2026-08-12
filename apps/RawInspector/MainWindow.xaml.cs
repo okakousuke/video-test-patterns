@@ -59,6 +59,13 @@ public partial class MainWindow : Window
         Width = layout.Width;
         Height = layout.Height;
         if (layout.IsMaximized) WindowState = WindowState.Maximized;
+
+        // 左右の欄の幅も戻します。0 は「記録なし」なので既定のままにします。
+        // 狭くしすぎた記録をそのまま復元しないよう、MinWidth 以上に収めます。
+        if (layout.ListWidth > 0)
+            ListColumn.Width = new GridLength(Math.Max(layout.ListWidth, ListColumn.MinWidth), GridUnitType.Pixel);
+        if (layout.DetailWidth > 0)
+            DetailColumn.Width = new GridLength(Math.Max(layout.DetailWidth, DetailColumn.MinWidth), GridUnitType.Pixel);
     }
 
     private void SaveLayout()
@@ -76,6 +83,8 @@ public partial class MainWindow : Window
             Width = bounds.Width,
             Height = bounds.Height,
             IsMaximized = WindowState == WindowState.Maximized,
+            ListWidth = ListColumn.ActualWidth,
+            DetailWidth = DetailColumn.ActualWidth,
         }.Save();
     }
 

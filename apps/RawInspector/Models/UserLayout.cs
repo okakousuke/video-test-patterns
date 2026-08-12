@@ -17,6 +17,12 @@ public sealed class UserLayout
     public double Height { get; set; }
     public bool IsMaximized { get; set; }
 
+    /// <summary>manifest一覧の欄の幅。0 のときは記録なしとして既定を使います。</summary>
+    public double ListWidth { get; set; }
+
+    /// <summary>生成条件の欄の幅。0 のときは記録なしとして既定を使います。</summary>
+    public double DetailWidth { get; set; }
+
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "RawInspector", "layout.json");

@@ -179,11 +179,11 @@
     <!-- 本体: 一覧 / プレビュー / 生成条件 -->
     <Grid>
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="340" MinWidth="240" />
+        <ColumnDefinition x:Name="ListColumn" Width="340" MinWidth="240" />
         <ColumnDefinition Width="Auto" />
         <ColumnDefinition Width="*" MinWidth="360" />
         <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="380" MinWidth="300" />
+        <ColumnDefinition x:Name="DetailColumn" Width="380" MinWidth="300" />
       </Grid.ColumnDefinitions>
 
       <!-- 左: manifest一覧 -->
