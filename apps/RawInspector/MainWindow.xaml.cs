@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using RawInspector.Models;
 using RawInspector.ViewModels;
 
 namespace RawInspector;
@@ -20,6 +21,8 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName == nameof(MainViewModel.Tool)) UpdatePreviewCursor();
         };
+        RestoreLayout();
+
         Loaded += (_, _) =>
         {
             // XAMLでIsCheckedの初期値を書いても、最初から未チェックの項目はイベントが飛びません。
@@ -28,6 +31,52 @@ public partial class MainWindow : Window
             _viewModel.RestoreLastFolder();
             UpdatePreviewCursor();
         };
+
+        Closing += (_, _) => SaveLayout();
+    }
+
+    // --- 前回の画面の形を覚える ---
+
+    /// <summary>
+    /// 前回終了したときの位置と大きさへ戻します。
+    /// 画面の外へ出てしまう記録は捨てます（掴めなくなるため）。
+    /// </summary>
+    private void RestoreLayout()
+    {
+        if (UserLayout.Load() is not { } layout) return;
+
+        if (!layout.FitsInside(
+                SystemParameters.VirtualScreenLeft,
+                SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth,
+                SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight))
+            return;
+
+        // 位置を指定するので、画面中央へ置く既定の動きは止めます。
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = layout.Left;
+        Top = layout.Top;
+        Width = layout.Width;
+        Height = layout.Height;
+        if (layout.IsMaximized) WindowState = WindowState.Maximized;
+    }
+
+    private void SaveLayout()
+    {
+        // 最大化中は Left/Top/Width/Height が最大化後の値になるため、
+        // 元に戻したときの大きさ（RestoreBounds）を覚えます。
+        var bounds = WindowState == WindowState.Normal
+            ? new Rect(Left, Top, Width, Height)
+            : RestoreBounds;
+
+        new UserLayout
+        {
+            Left = bounds.Left,
+            Top = bounds.Top,
+            Width = bounds.Width,
+            Height = bounds.Height,
+            IsMaximized = WindowState == WindowState.Maximized,
+        }.Save();
     }
 
     private void OnManifestSelected(object sender, RoutedPropertyChangedEventArgs<object> e)
