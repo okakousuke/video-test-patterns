@@ -1,6 +1,7 @@
 <Application x:Class="RawInspector.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:RawInspector"
              StartupUri="MainWindow.xaml">
   <Application.Resources>
 
@@ -8,6 +9,7 @@
     <!-- 窓が2つになったので、両方で使うものはここへ置きます。
          MainWindow の中に置くと、生成窓から参照できません。 -->
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <SolidColorBrush x:Key="WindowBackground" Color="#FFF4F6F9" />
 
     <SolidColorBrush x:Key="PanelBorder" Color="#FFD0D5DC" />

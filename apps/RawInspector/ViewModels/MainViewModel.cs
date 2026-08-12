@@ -54,6 +54,12 @@ public sealed class MainViewModel : ObservableObject
         SaveAllFormatsCommand = new RelayCommand(SaveAllFormats, () => HasPreview);
         ResetFiltersCommand = new RelayCommand(ResetFilters);
         ResetInterpretationCommand = new RelayCommand(ResetInterpretation, () => HasPreview);
+        Dashboard = new DashboardViewModel(folder =>
+        {
+            LoadFolder(folder);
+            ShowDashboard = false;
+        });
+        ShowDashboardCommand = new RelayCommand(OpenDashboard);
         ExpandAllCommand = new RelayCommand(() => SetAllGroupsExpanded(true));
         CollapseAllCommand = new RelayCommand(() => SetAllGroupsExpanded(false));
         _selectedImageFormat = ImageFormats[0];
@@ -62,6 +68,31 @@ public sealed class MainViewModel : ObservableObject
         SizeFilters = ["すべて"];
         _colorModelFilter = ColorModelFilters[0];
         _sizeFilter = SizeFilters[0];
+    }
+
+    // --- 最初に出す画面 ---
+    //
+    // フォルダを開いていないうちは、一覧もプレビューも空のままです。
+    // そこで「何がどこにあるか」「生成器へ繋がっているか」を先に出します。
+    // 一覧を読み込んだら引っ込めますが、状態を見たくなるのは起動時とはかぎらないので、
+    // ホームでいつでも戻れるようにします。戻っても読み込んだ一覧は消しません。
+
+    public DashboardViewModel Dashboard { get; }
+
+    private bool _showDashboard = true;
+    public bool ShowDashboard
+    {
+        get => _showDashboard;
+        private set => Set(ref _showDashboard, value);
+    }
+
+    public RelayCommand ShowDashboardCommand { get; }
+
+    /// <summary>最初の画面を出します。数え直しもここで走らせます。</summary>
+    private void OpenDashboard()
+    {
+        ShowDashboard = true;
+        _ = Dashboard.RefreshAsync(_currentFolder ?? LoadLastFolder());
     }
 
     // --- コマンド ---
@@ -790,18 +821,40 @@ public sealed class MainViewModel : ObservableObject
 
     // --- 起動時 ---
 
-    public void RestoreLastFolder()
+    /// <summary>前回のフォルダの場所だけを返します（読み込みません）。</summary>
+    private static string? LoadLastFolder()
     {
         try
         {
-            if (!File.Exists(LastFolderFile)) return;
+            if (!File.Exists(LastFolderFile)) return null;
             var folder = File.ReadAllText(LastFolderFile).Trim();
-            if (Directory.Exists(folder)) LoadFolder(folder);
+            return Directory.Exists(folder) ? folder : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 起動時の処理です。前回のフォルダは読み込んでおきますが、
+    /// 最初に見せるのは最初の画面のほうです。
+    /// いきなり一覧が出ても、その素材が何なのか・全部揃っているのかが分かりません。
+    /// </summary>
+    public void RestoreLastFolder()
+    {
+        var folder = LoadLastFolder();
+        try
+        {
+            if (folder is not null) LoadFolder(folder);
         }
         catch (Exception ex)
         {
             StatusText = $"前回のフォルダを復元できませんでした: {ex.Message}";
         }
+
+        ShowDashboard = true;
+        _ = Dashboard.RefreshAsync(folder);
     }
 
     private void OpenFolder()
@@ -813,6 +866,7 @@ public sealed class MainViewModel : ObservableObject
         };
         if (dialog.ShowDialog() != true) return;
         LoadFolder(dialog.FolderName);
+        ShowDashboard = false;
     }
 
     /// <summary>
@@ -855,6 +909,7 @@ public sealed class MainViewModel : ObservableObject
         var folder = Path.GetDirectoryName(manifestPath);
         if (folder is null) return;
 
+        ShowDashboard = false;
         var sameFolder = _currentFolder is not null
             && string.Equals(Path.GetFullPath(folder), Path.GetFullPath(_currentFolder), StringComparison.OrdinalIgnoreCase);
 

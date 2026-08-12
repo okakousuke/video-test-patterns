@@ -19,3 +19,17 @@ public sealed class BoolToHiddenConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is Visibility.Visible;
 }
+
+
+/// <summary>
+/// true のときに隠します（<see cref="BooleanToVisibilityConverter"/> の逆です）。
+/// 最初の画面を出しているあいだ、下の一覧とプレビューをまとめて畳むために使います。
+/// </summary>
+public sealed class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is not Visibility.Visible;
+}
