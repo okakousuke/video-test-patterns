@@ -223,7 +223,8 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="色モデル" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <TextBlock Grid.Column="0" Text="色モデル" VerticalAlignment="Center" Margin="0,0,4,0"
+                     ToolTip="RGB系かY'CbCr系かで絞り込みます。" />
           <ComboBox Grid.Column="1" Margin="0,0,8,0"
                     ItemsSource="{Binding ColorModelFilters}" SelectedItem="{Binding ColorModelFilter}"
                     ToolTip="RGB系かY'CbCr系かで一覧を絞り込みます。" />
@@ -235,6 +236,18 @@
           <Button Grid.Column="4" Content="解除" Width="46" MinWidth="46" Margin="0"
                   Command="{Binding ResetFiltersCommand}"
                   ToolTip="絞り込みを解除して、すべて表示に戻します。" />
+        </Grid>
+
+        <!-- パターンでの絞り込み。42種まで増えたので、名前で1つに絞れるようにします。 -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="パターン" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="1" Margin="0"
+                    ItemsSource="{Binding PatternFilters}" SelectedItem="{Binding PatternFilter}"
+                    ToolTip="パターン名で一覧を絞り込みます。並ぶのは、開いているフォルダに実際にあるものだけです。" />
         </Grid>
 
         <!-- 並び順。名前で並べると 1280x720 が 176x144 より前に来ます（文字として比べるため）。

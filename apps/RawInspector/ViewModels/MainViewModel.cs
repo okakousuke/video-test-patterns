@@ -415,7 +415,9 @@ public sealed class MainViewModel : ObservableObject
         RawSummary.Add(new SummaryItem("色差サブサンプリング", manifest.Subsampling ?? "-"));
         RawSummary.Add(new SummaryItem("ビット深度", $"{manifest.BitDepth}bit"));
         RawSummary.Add(new SummaryItem("格納形式", manifest.Storage ?? "-"));
-        RawSummary.Add(new SummaryItem("画像サイズ", $"{manifest.Width} x {manifest.Height}"));
+        RawSummary.Add(new SummaryItem("画像サイズ", ResolutionNames.Describe(manifest.Width, manifest.Height)));
+        // 画素数の比です。映したときの形の比ではありません（画素が正方形のときだけ一致します）。
+        RawSummary.Add(new SummaryItem("画素数の比", AspectRatio.Describe(manifest.Width, manifest.Height)));
     }
 
     private PreviewRenderOptions CurrentOptions =>
@@ -880,6 +882,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        RefreshPatternFilters();
         RefreshSizeFilters();
         RebuildGroups();
 
@@ -919,6 +922,35 @@ public sealed class MainViewModel : ObservableObject
     ];
 
     private const string OverFourKLabel = "4K 超";
+
+    // パターンが 42 まで増えたので、見出しを畳んでも目的のものを探すのに時間がかかります。
+    // 名前で絞れるようにします。中身は開いているフォルダにあるものだけです。
+    // 「あるはずのものが選べない」より「選べるのに1件も出ない」ほうが分かりにくいためです。
+    public ObservableCollection<string> PatternFilters { get; } = ["すべて"];
+
+    private string _patternFilter = "すべて";
+    public string PatternFilter
+    {
+        get => _patternFilter;
+        set { if (Set(ref _patternFilter, value)) RebuildGroups(); }
+    }
+
+    private void RefreshPatternFilters()
+    {
+        var current = _patternFilter;
+        PatternFilters.Clear();
+        PatternFilters.Add("すべて");
+
+        foreach (var name in _entries
+                     .Where(e => e.IsLoaded)
+                     .Select(e => e.GroupName)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            PatternFilters.Add(name);
+
+        _patternFilter = PatternFilters.Contains(current) ? current : "すべて";
+        Raise(nameof(PatternFilter));
+    }
 
     private void RefreshSizeFilters()
     {
@@ -967,8 +999,10 @@ public sealed class MainViewModel : ObservableObject
     {
         _colorModelFilter = ColorModelFilters[0];
         _sizeFilter = "すべて";
+        _patternFilter = "すべて";
         Raise(nameof(ColorModelFilter));
         Raise(nameof(SizeFilter));
+        Raise(nameof(PatternFilter));
         RebuildGroups();
         StatusText = "絞り込みを解除しました。";
     }
@@ -1045,7 +1079,9 @@ public sealed class MainViewModel : ObservableObject
         var colorMatches = _colorModelFilter == "すべて"
             || (_colorModelFilter == "YUV / YCbCr" && entry.Manifest.IsYcbcr)
             || ManifestInfo.Same(entry.Manifest.ColorModel, _colorModelFilter);
-        return colorMatches && MatchesSize(entry.Manifest);
+        var patternMatches = _patternFilter == "すべて"
+            || string.Equals(entry.GroupName, _patternFilter, StringComparison.OrdinalIgnoreCase);
+        return colorMatches && patternMatches && MatchesSize(entry.Manifest);
     }
 
     private bool MatchesSize(ManifestInfo manifest)

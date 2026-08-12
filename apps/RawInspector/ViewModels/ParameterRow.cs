@@ -30,9 +30,24 @@ public sealed class ParameterRow
             new ParameterRow
             {
                 Name = "画像サイズ",
-                Value = $"{manifest.Width} × {manifest.Height} px (W × H)",
+                Value = $"{ResolutionNames.Describe(manifest.Width, manifest.Height)} px (W × H)",
                 EnglishName = "width × height",
-                Help = "RAWには画像サイズの情報が含まれません。幅または高さを誤ると行境界がずれ、復元結果全体が斜めに崩れます。",
+                Help = "RAWには画像サイズの情報が含まれません。幅または高さを誤ると行境界がずれ、復元結果全体が斜めに崩れます。"
+                     + "添えている呼び名（VGA・FHD など）は画素数が同じものの通称で、規格への適合を表すものではありません。",
+            },
+            new ParameterRow
+            {
+                // 記録された値ではなく、幅と高さから出したものです。
+                // それでもここに並べるのは、サイズだけ見て気付けない食い違いがあるためです。
+                Name = "画素数の比",
+                Value = AspectRatio.Describe(manifest.Width, manifest.Height),
+                EnglishName = "width : height",
+                Help = "幅と高さから出した比です（manifestに記録されている値ではありません）。"
+                     + "これは画素が何個並んでいるかの比であって、映したときの形の比ではありません。"
+                     + "両者が一致するのは画素が正方形のときだけです。"
+                     + "720×480 は画素数では 3:2 ですが、SDの素材は横長の画素を前提にしていて、映すと 4:3 になります。"
+                     + "どちらの前提かはRAWにもmanifestにも入っていないので、ここでは画素数の比だけを出しています。"
+                     + "同じ比どうし（1920×1080 と 1280×720 はどちらも 16:9）なら、拡大縮小しても形が崩れません。",
             },
             new ParameterRow
             {
