@@ -28,6 +28,7 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel()
     {
         OpenFolderCommand = new RelayCommand(OpenFolder);
+        RefreshFolderCommand = new RelayCommand(RefreshFolder, () => _currentFolder is not null);
         SelectOutputFolderCommand = new RelayCommand(SelectOutputFolder);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
         SaveImageCommand = new RelayCommand<string>(SaveImage, _ => HasPreview);
@@ -53,6 +54,7 @@ public sealed class MainViewModel : ObservableObject
     // --- コマンド ---
 
     public RelayCommand OpenFolderCommand { get; }
+    public RelayCommand RefreshFolderCommand { get; }
     public RelayCommand SelectOutputFolderCommand { get; }
     public RelayCommand OpenOutputFolderCommand { get; }
     public RelayCommand<string> SaveImageCommand { get; }
@@ -684,11 +686,34 @@ public sealed class MainViewModel : ObservableObject
         LoadFolder(dialog.FolderName);
     }
 
-    private void LoadFolder(string folder)
+    /// <summary>
+    /// いま開いているフォルダを読み直します。
+    ///
+    /// 生成し直すたびに開き直すのは手数が多いので、開いたまま更新できるようにします。
+    /// 前と同じRAWを選び直し、表示倍率も保ちます。作り直す前後で見比べるための機能なので、
+    /// 倍率が戻ってしまうと比較になりません。
+    /// </summary>
+    private void RefreshFolder()
+    {
+        if (_currentFolder is null) return;
+
+        var keepPath = _currentManifestPath;
+        var keepScale = _scalePercent;
+        LoadFolder(_currentFolder, keepPath, keepScale);
+    }
+
+    private string? _currentFolder;
+
+    /// <summary>true のあいだ、RAWを開いても全体表示へ戻しません。</summary>
+    private bool _keepScaleOnLoad;
+
+    private void LoadFolder(string folder, string? selectPath = null, double? keepScale = null)
     {
         _entries.Clear();
         ClearSelection();
         FolderText = folder;
+        _currentFolder = folder;
+        RefreshFolderCommand.RaiseCanExecuteChanged();
 
         try
         {
@@ -707,14 +732,27 @@ public sealed class MainViewModel : ObservableObject
         OutputFolder ??= folder;
         SaveLastFolder(folder);
 
+        // 読み直しのときは前と同じRAWを選びます。無くなっていれば先頭に戻します。
+        var wanted = selectPath is null
+            ? null
+            : _entries.FirstOrDefault(e => string.Equals(e.Path, selectPath, StringComparison.OrdinalIgnoreCase));
+
         // 空のキャンバスのまま止まらないよう、プレビューできるものを1件だけ開いておきます。
-        var first = _entries.FirstOrDefault(e => e.SupportsPreview) ?? _entries.FirstOrDefault();
-        if (first is not null) first.IsSelected = true;
+        var target = wanted ?? _entries.FirstOrDefault(e => e.SupportsPreview) ?? _entries.FirstOrDefault();
+        if (target is not null)
+        {
+            _keepScaleOnLoad = keepScale is not null && wanted is not null;
+            target.IsSelected = true;
+            _keepScaleOnLoad = false;
+            if (keepScale is not null && wanted is not null) ScalePercent = keepScale.Value;
+        }
 
         var broken = _entries.Count(e => !e.IsLoaded);
+        var reloaded = selectPath is not null;
+        var head = reloaded ? "読み直しました。manifest" : "manifest";
         StatusText = broken == 0
-            ? $"manifest {_entries.Count} 件を読み込みました。一覧から選ぶとプレビューします。"
-            : $"manifest {_entries.Count} 件（うち読み込み不可 {broken} 件）。読み込み不可のものも一覧に残しています。";
+            ? $"{head} {_entries.Count} 件。一覧から選ぶとプレビューします。"
+            : $"{head} {_entries.Count} 件（うち読み込み不可 {broken} 件）。読み込み不可のものも一覧に残しています。";
     }
 
     // 画素数の粗い区分。フォルダに数十件あると実サイズだけの一覧は選びにくいので、
@@ -896,7 +934,9 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(OverrideWarning));
             UpdatePreviewRecipe();
             StatusText = "読み込みました。";
-            RequestFit();
+            // 読み直しのときは倍率を保ちます。作り直す前後を見比べる操作なので、
+            // ここで全体表示へ戻すと比較にならなくなります。
+            if (!_keepScaleOnLoad) RequestFit();
         }
         catch (Exception ex)
         {

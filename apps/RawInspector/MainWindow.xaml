@@ -48,6 +48,7 @@
     <KeyBinding Modifiers="Control" Key="D4" Command="{Binding SaveImageCommand}" CommandParameter="bmp" />
     <KeyBinding Modifiers="Control" Key="D5" Command="{Binding SaveImageCommand}" CommandParameter="gif" />
     <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenFolderCommand}" />
+    <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
     <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ActualSizeCommand}" />
     <KeyBinding Modifiers="Control" Key="OemPlus" Command="NavigationCommands.IncreaseZoom" />
     <KeyBinding Modifiers="Control" Key="Add" Command="NavigationCommands.IncreaseZoom" />
@@ -64,6 +65,11 @@
         <Button DockPanel.Dock="Left" Content="📁 フォルダを開く" Style="{StaticResource AccentButton}"
                 Command="{Binding OpenFolderCommand}"
                 ToolTip="manifestとRAWのあるフォルダを開きます（Ctrl+O）。サブフォルダも走査します。" />
+
+        <!-- 開いたまま作り直せるように。開き直さずに済みます。 -->
+        <Button DockPanel.Dock="Left" Content="⟳" Width="34" MinWidth="34" FontSize="15" Margin="0,0,6,0"
+                Command="{Binding RefreshFolderCommand}"
+                ToolTip="いま開いているフォルダを読み直します（F5）。選んでいたRAWと表示倍率はそのまま保ちます。" />
 
         <!-- 書き出しはすべてここへ集めます。保存先の指定と保存の操作が離れていると、
              どこへ出るのか分からないまま押すことになります。 -->
