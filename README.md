@@ -103,6 +103,9 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 python tools/generate_pattern_samples.py
 ```
 
+生成したものは `generated/` 直下へ出ます。ここは `.gitignore` の対象で、リポジトリには残りません。
+**作って捨てるものは `generated/`、リポジトリに同梱するものは `samples/`** と置き場を分けています。
+
 ### 参照用の RAW と manifest
 
 [`samples/raw/`](samples/raw/) に、**格納形式を網羅した RAW と manifest** を同梱しています。
@@ -273,8 +276,8 @@ vtp --config configs/colorbar_rgb8.jsonc --width 1280 --height 720   # 上書き
 全パターンを、格納形式とビット深度を散らした条件で1本ずつ作ります。
 
 ```sh
-python tools/make_samples.py            # generated/samples/ へ出力
-python tools/make_samples.py --seed 7   # 別のサイズ一式にする
+python tools/make_samples.py            # generated/ へ出力
+python tools/make_samples.py --seed 7   # 別の割り当てにする
 ```
 
 画像サイズは、実際に使われている規格の解像度（QCIF / CIF / VGA / SD NTSC / SD PAL / SVGA / XGA /

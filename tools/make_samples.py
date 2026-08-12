@@ -12,8 +12,11 @@
 生成器側は成立しない指定をエラーで止めるので、このスクリプトが条件を取り違えていれば、
 生成の時点で分かります。
 
+生成物は generated/ 直下へ出します。ここは .gitignore の対象で、リポジトリには残りません。
+同梱するサンプルは samples/ にあり、そちらとは役割が違います。
+
 使い方:
-    python tools/make_samples.py                        # generated/samples/ へ出力
+    python tools/make_samples.py                        # generated/ へ出力
     python tools/make_samples.py --out DIR              # 出力先を変える
     python tools/make_samples.py --seed 123             # 別の割り当てにする
     python tools/make_samples.py --max-pixels 8294400   # 4K まで使う
@@ -152,7 +155,7 @@ def build_command(pattern: str, profile: tuple, width: int, height: int, out_bas
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", default="generated/samples", help="出力先ディレクトリ")
+    parser.add_argument("--out", default="generated", help="出力先ディレクトリ")
     parser.add_argument("--seed", type=int, default=20260812, help="解像度の割り当てに使う乱数シード")
     parser.add_argument("--max-pixels", type=int, default=DEFAULT_MAX_PIXELS,
                         help="使う解像度の上限画素数。既定は WUXGA 相当。4K まで使うなら 8294400 を指定")
