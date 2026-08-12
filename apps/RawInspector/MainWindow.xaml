@@ -82,8 +82,9 @@
 
         <Border DockPanel.Dock="Right" Style="{StaticResource ToolGroup}" Margin="0">
           <StackPanel Orientation="Horizontal">
+            <!-- いちばん長い項目（PNG（可逆・既定））が、右端の矢印にかからない幅にします。 -->
             <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding SelectedImageFormat}"
-                      Width="112" Margin="0,0,6,0" VerticalAlignment="Center"
+                      Width="164" Margin="0,0,6,0" VerticalAlignment="Center"
                       ToolTip="保存する圧縮画像の形式です。" />
             <Button Content="保存..." Style="{StaticResource SaveButton}"
                     Command="{Binding SaveSelectedFormatCommand}"
