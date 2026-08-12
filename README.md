@@ -49,6 +49,9 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | 画素の縦横比 | `square`, `circles` |
 | 向きごとの解像限界 | `wedge` |
 | ひととおりまとめて | `testcard` |
+| 表示側の伝達特性（ガンマ） | `gamma` |
+| 成分ごと・色ごとの階調の偏り | `colorramp`, `colormatrix` |
+| 平滑化・圧縮の効き方 | `noise` |
 
 ### 作成できるパターン一覧
 
@@ -85,6 +88,10 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `stepmatrix` | [stepmatrix.png](samples/patterns/stepmatrix.png) | 256階調を格子に並べて多階調を面で確認 |
 | `wedge` | [wedge.png](samples/patterns/wedge.png) | 向きごとの解像限界（水平・垂直を分けて確認） |
 | `testcard` | [testcard.png](samples/patterns/testcard.png) | 総合パターン。1枚で画角・縦横比・解像・色順・階調 |
+| `gamma` | [gamma.png](samples/patterns/gamma.png) | 表示側の伝達特性（ガンマ）確認。等倍でのみ成立 |
+| `colorramp` | [colorramp.png](samples/patterns/colorramp.png) | 成分ごとの階調の段差確認 |
+| `colormatrix` | [colormatrix.png](samples/patterns/colormatrix.png) | 色ごとの階調の偏り確認 |
+| `noise` | [noise.png](samples/patterns/noise.png) | 平滑化・圧縮の効き方確認（シード固定で再現） |
 
 サンプルを再生成する場合は、リポジトリのルートで次を実行します。
 

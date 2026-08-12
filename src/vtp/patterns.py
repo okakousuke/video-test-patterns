@@ -875,6 +875,145 @@ def testcard(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def gamma(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """1 画素の白黒縞の中に、明るさの違う面を並べる（伝達特性の確認用）.
+
+    地は 1 画素ごとの白黒縞です。光の量としては白と黒のちょうど中間になりますが、
+    それがコード値のいくつに当たるかは、表示側の伝達特性（いわゆるガンマ）で変わります。
+    並べた面のうち、地に溶けて見えなくなるものがその答えです。
+
+    **等倍（100%）でしか成立しません。** 縮小や拡大が入ると縞が混ざり、
+    地の明るさそのものが変わってしまいます。
+
+    ``patches`` で面の数、``start`` と ``end`` で面の明るさの範囲を指定します。
+    """
+    patches = int(_opt(options, "patches", 9))
+    start = float(_opt(options, "start", 0.35))
+    end = float(_opt(options, "end", 0.95))
+    if patches < 2:
+        raise ValueError("gamma の patches は 2 以上にしてください")
+
+    _, yy = _coords(width, height)
+    img = _gray((np.floor(yy) % 2 < 1).astype(np.float32))
+
+    # 面は横一列。面と面のあいだに地の縞が同じくらい残るよう、
+    # 幅は「面の数 × 2」で割ります。隙間が狭いと、比べる相手の地が見えません。
+    size = min(max(4, height // 3), max(4, width // (patches * 2)))
+    y0 = (height - size) // 2
+    gap = (width - size * patches) // (patches + 1)
+    for i in range(patches):
+        x0 = gap + i * (size + gap)
+        if x0 + size > width:
+            break
+        level = start + (end - start) * i / (patches - 1)
+        img[y0 : y0 + size, x0 : x0 + size, :] = np.float32(level)
+    return img
+
+
+def colorramp(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """R・G・B・グレーのグラデーションを並べる（成分ごとの段差の確認用）.
+
+    grayramp は 3 成分が同じ値なので、1 つの成分だけで起きた段差が埋もれます。
+    成分ごとに分けて並べると、どの成分で階調が落ちているかが分かります。
+    いちばん下のグレーが比較の基準です。
+
+    ``orientation`` で向きを指定します。
+    """
+    orientation = str(_opt(options, "orientation", "horizontal"))
+    position = _axis(width, height, orientation)
+
+    img = _canvas(width, height, 0.0)
+    bands = [(0,), (1,), (2,), (0, 1, 2)]
+    edges = _edges(height if orientation == "horizontal" else width, len(bands))
+
+    for index, channels in enumerate(bands):
+        if orientation == "horizontal":
+            region = (slice(edges[index], edges[index + 1]), slice(None))
+        else:
+            region = (slice(None), slice(edges[index], edges[index + 1]))
+        for channel in channels:
+            img[region[0], region[1], channel] = position[region[0], region[1]]
+    return img
+
+
+def colormatrix(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """色を段階的に並べた表（色ごとの階調の確認用）.
+
+    行が色、列が明るさです。カラーバーが最大値だけを見るのに対し、
+    同じ色を薄いほうまで並べます。暗い側だけ色が転ぶ、特定の色だけ段が飛ぶ、
+    といった偏りは、明るさを振らないと出てきません。
+
+    ``levels`` で段数を指定します（既定 6）。
+    """
+    levels = int(_opt(options, "levels", 6))
+    if levels < 2:
+        raise ValueError("colormatrix の levels は 2 以上にしてください")
+
+    hues = np.array(
+        [
+            (1, 0, 0),  # 赤
+            (0, 1, 0),  # 緑
+            (0, 0, 1),  # 青
+            (0, 1, 1),  # シアン
+            (1, 0, 1),  # マゼンタ
+            (1, 1, 0),  # 黄
+            (1, 1, 1),  # 白（基準）
+        ],
+        dtype=np.float32,
+    )
+
+    img = _canvas(width, height, 0.0)
+    ys = _edges(height, len(hues))
+    xs = _edges(width, levels)
+    for r, hue in enumerate(hues):
+        for c in range(levels):
+            level = (c + 1) / levels
+            img[ys[r] : ys[r + 1], xs[c] : xs[c + 1], :] = hue * level
+    return img
+
+
+def noise(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """画素ごとにばらついた模様（平滑化・圧縮の効き方の確認用）.
+
+    隣り合う画素に相関が無いので、平滑化や圧縮が入ると真っ先に均されます。
+    どのくらい残っているかで、経路のどこかで手が入っていないかを見ます。
+
+    乱数は座標とシードから計算する固定の手続きで作ります。ライブラリの
+    乱数実装に依存しないので、**同じシードなら環境が変わっても同じ絵**になります。
+
+    ``seed`` で並び、``mono`` で白黒か色付きか、``center`` と ``amplitude`` で
+    ばらつく範囲を指定します。
+    """
+    seed = int(_opt(options, "seed", 1))
+    mono = bool(_opt(options, "mono", True))
+    center = float(_opt(options, "center", 0.5))
+    amplitude = float(_opt(options, "amplitude", 0.5))
+
+    def hashed(channel: int) -> np.ndarray:
+        """座標から 0..1 の値を作る。整数演算だけなので結果が環境で変わりません。"""
+        mask = np.uint64(0xFFFFFFFF)
+        x = np.arange(width, dtype=np.uint64)[None, :]
+        y = np.arange(height, dtype=np.uint64)[:, None]
+        h = (x * np.uint64(0x9E3779B1)) & mask
+        h = (h ^ ((y * np.uint64(0x85EBCA77)) & mask)) & mask
+        h = (h ^ ((np.uint64(seed * 2654435761 + channel * 40503)) & mask)) & mask
+        h = (h ^ (h >> np.uint64(15))) & mask
+        h = (h * np.uint64(0x2545F491)) & mask
+        h = (h ^ (h >> np.uint64(13))) & mask
+        h = (h * np.uint64(0x27220A95)) & mask
+        h = (h ^ (h >> np.uint64(16))) & mask
+        return (h.astype(np.float64) / float(1 << 32)).astype(np.float32)
+
+    if mono:
+        value = center + (hashed(0) - 0.5) * 2.0 * amplitude
+        return _gray(np.clip(value, 0.0, 1.0))
+
+    img = _canvas(width, height, 0.0)
+    for channel in range(3):
+        img[:, :, channel] = np.clip(center + (hashed(channel) - 0.5) * 2.0 * amplitude, 0.0, 1.0)
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -904,6 +1043,10 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "stepmatrix": stepmatrix,
     "wedge": wedge,
     "testcard": testcard,
+    "gamma": gamma,
+    "colorramp": colorramp,
+    "colormatrix": colormatrix,
+    "noise": noise,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)

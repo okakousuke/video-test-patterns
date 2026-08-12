@@ -428,3 +428,92 @@ def test_testcard_has_no_text_glyphs():
     img = render("testcard", 320, 240, {"steps": 11})
     values = np.unique(img)
     assert len(values) < 40
+
+
+# --- 伝達特性・成分・ばらつき ---
+
+
+def test_gamma_background_alternates_every_line():
+    """地が 1 画素ごとの白黒縞であること（縞が混ざると地の明るさが変わる）."""
+    img = render("gamma", 64, 32, {"patches": 2})[:, :, 0]
+    column = img[:, 1]           # 面を避けた左端付近
+    assert set(np.unique(column).tolist()) == {0.0, 1.0}
+    assert np.all(column[::2] != column[1::2])
+
+
+def test_gamma_patches_increase_and_stay_in_range():
+    img = render("gamma", 900, 200, {"patches": 5, "start": 0.4, "end": 0.9})[:, :, 0]
+    row = img[100]
+    # 縞ではない（0 でも 1 でもない）値が、左から右へ増えていくこと
+    patches = sorted({float(v) for v in row if 0.0 < v < 1.0})
+    assert len(patches) == 5
+    assert abs(patches[0] - 0.4) < 1e-6
+    assert abs(patches[-1] - 0.9) < 1e-6
+
+
+def test_gamma_leaves_background_between_patches():
+    """面と面のあいだに地の縞が残ること（残らないと比べる相手が無い）."""
+    img = render("gamma", 900, 200, {"patches": 5})[:, :, 0]
+    row = img[100]
+    # 面の値が現れる区間の合間に、0 と 1 の縞の行が挟まっていること
+    assert 0.0 in set(img[100].tolist()) or 1.0 in set(img[100].tolist())
+    solid = np.array([0.0 < v < 1.0 for v in row])
+    # 面が 5 つに分かれている（間が地で切れている）
+    groups = int(np.count_nonzero(np.diff(solid.astype(np.int8)) == 1))
+    assert groups == 5
+
+
+def test_colorramp_separates_channels():
+    """帯ごとに 1 成分だけが変わること."""
+    img = render("colorramp", 256, 400)
+    red = img[50]
+    green = img[150]
+    blue = img[250]
+    gray = img[350]
+    assert red[:, 0].max() == pytest.approx(1.0, abs=0.01) and red[:, 1].max() == 0.0
+    assert green[:, 1].max() == pytest.approx(1.0, abs=0.01) and green[:, 0].max() == 0.0
+    assert blue[:, 2].max() == pytest.approx(1.0, abs=0.01) and blue[:, 0].max() == 0.0
+    assert np.allclose(gray[:, 0], gray[:, 1]) and np.allclose(gray[:, 1], gray[:, 2])
+
+
+def test_colormatrix_levels_increase_to_the_right():
+    img = render("colormatrix", 600, 700, {"levels": 6})
+    row = img[50]   # 赤の行
+    assert row[10, 0] < row[210, 0] < row[410, 0] < row[590, 0]
+    assert abs(float(row[590, 0]) - 1.0) < 1e-6
+
+
+def test_colormatrix_last_row_is_neutral():
+    """最後の行は白（基準）で、3 成分が揃うこと."""
+    img = render("colormatrix", 600, 700, {"levels": 6})
+    cell = img[680, 590]
+    assert cell[0] == cell[1] == cell[2]
+
+
+def test_noise_is_reproducible_and_seed_dependent():
+    """同じシードなら同じ絵、違うシードなら違う絵になること."""
+    a = render("noise", 64, 64, {"seed": 1})
+    b = render("noise", 64, 64, {"seed": 1})
+    c = render("noise", 64, 64, {"seed": 2})
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, c)
+
+
+def test_noise_has_no_correlation_between_neighbours():
+    """隣り合う画素に相関が無いこと（平滑化が入れば相関が生まれる）."""
+    img = render("noise", 256, 256, {"seed": 3})[:, :, 0].astype(np.float64)
+    left, right = img[:, :-1].ravel(), img[:, 1:].ravel()
+    correlation = float(np.corrcoef(left, right)[0, 1])
+    assert abs(correlation) < 0.05
+
+
+def test_noise_spreads_over_the_requested_range():
+    img = render("noise", 128, 128, {"seed": 4, "center": 0.5, "amplitude": 0.5})[:, :, 0]
+    assert img.min() < 0.05 and img.max() > 0.95
+    assert abs(float(img.mean()) - 0.5) < 0.02
+
+
+def test_noise_colour_channels_differ():
+    img = render("noise", 64, 64, {"seed": 5, "mono": False})
+    assert not np.array_equal(img[:, :, 0], img[:, :, 1])
+    assert not np.array_equal(img[:, :, 1], img[:, :, 2])
