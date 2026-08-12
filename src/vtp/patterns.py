@@ -1014,6 +1014,215 @@ def noise(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def barshd(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """4 段構成のカラーバー（HD 系で使われる考え方に沿った自作構成）.
+
+    ``smptebars`` の 3 段構成に対し、こちらは段を分けて役割をはっきりさせています。
+
+    - 1 段目 : 左右に灰色の脇を置いた 7 色のバー。脇があると、端の色だけ乱れる不具合が分かります
+    - 2 段目 : 同じ 7 色を逆順に並べた帯。上下で色が合うかを見ます
+    - 3 段目 : 端から端までのグラデーション。段差の出る位置を探します
+    - 4 段目 : 黒・白の基準と、黒のすぐ上を刻んだ帯
+
+    **特定の規格に合わせた値ではありません。** 段の比率も色の振幅も、この実装で決めたものです。
+    規格の数値が要るときは、その規格の定義に従って ``level`` などを指定してください。
+
+    ``level`` でバーの振幅（既定 0.75）、``flank`` で脇の灰色の明るさ（既定 0.4）、
+    ``pluge`` で 4 段目の黒帯の振れ幅を指定します。
+    """
+    level = float(_opt(options, "level", 0.75))
+    flank = float(_opt(options, "flank", 0.4))
+    pluge_delta = float(_opt(options, "pluge", 0.06))
+
+    img = _canvas(width, height, 0.0)
+    rows = [round(height * r) for r in (0.0, 0.58, 0.68, 0.78, 1.0)]
+
+    # 左右の脇。ここを除いた範囲に 7 色を並べます。
+    side = max(1, round(width * 0.05))
+    inner0, inner1 = side, max(side + 7, width - side)
+    edges = [inner0 + round(i * (inner1 - inner0) / 7) for i in range(8)]
+    seven = BAR_COLORS[:7] * level
+
+    # 1 段目
+    img[rows[0] : rows[1], :inner0, :] = np.float32(flank)
+    img[rows[0] : rows[1], inner1:, :] = np.float32(flank)
+    for i in range(7):
+        img[rows[0] : rows[1], edges[i] : edges[i + 1], :] = seven[i]
+
+    # 2 段目（逆順）
+    img[rows[1] : rows[2], :inner0, :] = np.float32(flank)
+    img[rows[1] : rows[2], inner1:, :] = np.float32(flank)
+    for i in range(7):
+        img[rows[1] : rows[2], edges[i] : edges[i + 1], :] = seven[6 - i]
+
+    # 3 段目（グラデーション）
+    ramp = np.linspace(0.0, 1.0, max(1, inner1 - inner0), dtype=np.float32)
+    img[rows[2] : rows[3], :inner0, :] = np.float32(flank)
+    img[rows[2] : rows[3], inner1:, :] = np.float32(flank)
+    img[rows[2] : rows[3], inner0:inner1, :] = ramp[None, :, None]
+
+    # 4 段目（黒・白の基準と、黒のすぐ上の刻み）
+    bottom = img[rows[3] : rows[4], :, :]
+    bottom[:] = np.float32(flank)
+    segments = _edges(inner1 - inner0, 6)
+    values = [0.0, 1.0, 0.0, 0.0, pluge_delta / 2.0, pluge_delta]
+    for i, value in enumerate(values):
+        bottom[:, inner0 + segments[i] : inner0 + segments[i + 1], :] = np.float32(value)
+    return img
+
+
+def splitsteps(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """上下で並びを逆にしたグレーステップ.
+
+    上段は左から明るく、下段は右から明るくします。こうすると上下で必ず違う段が隣り合うので、
+    「隣の段と見分けられるか」を段ごとに確かめられます。
+    横一列だけだと、隣り合う段の差はいつも同じ幅で、境目が見えるかどうかしか分かりません。
+
+    ``steps`` で段数を指定します（既定 11）。
+    """
+    steps = int(_opt(options, "steps", 11))
+    if steps < 2:
+        raise ValueError("splitsteps の steps は 2 以上にしてください")
+
+    img = _canvas(width, height, 0.0)
+    middle = height // 2
+    edges = _edges(width, steps)
+    for i in range(steps):
+        level = np.float32(i / (steps - 1))
+        img[:middle, edges[i] : edges[i + 1], :] = level
+        img[middle:, edges[steps - 1 - i] : edges[steps - i], :] = level
+    return img
+
+
+def geometrycard(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """幾何の確認に寄せたテストカード（この実装の自作構成）.
+
+    ``testcard`` が 1 枚で広く見るのに対し、こちらは形のずれだけを見ます。
+    色も階調も入れないぶん、線が読みやすくなります。
+
+    - 外周の交互ブロック : 画角の欠け
+    - 全面の格子         : 歪み・射影変換のずれ
+    - 中央と四隅の円     : 画素の縦横比。四隅は周辺の歪みを見ます
+    - 対角線             : 中心のずれ。交点が画面中央から外れていれば位置がずれています
+
+    ``grid`` で格子の間隔、``blocks`` で外周ブロックの数を指定します。
+    """
+    grid_step = int(_opt(options, "grid", max(8, min(width, height) // 16)))
+    blocks = int(_opt(options, "blocks", 16))
+    if blocks < 2:
+        raise ValueError("geometrycard の blocks は 2 以上にしてください")
+
+    img = _canvas(width, height, 0.0)
+    xx, yy = _coords(width, height)
+    cx, cy = width / 2.0, height / 2.0
+    short = min(width, height)
+    thin = max(1, short // 480)
+
+    # 格子は中心を基準に刻みます（端起点だと左右で位相がずれます）。
+    def lines_from_centre(coordinate: np.ndarray, centre: float) -> np.ndarray:
+        offset = np.mod(coordinate - centre + grid_step / 2.0, grid_step) - grid_step / 2.0
+        return np.abs(offset) < thin / 2.0 + 0.5
+
+    img[lines_from_centre(xx, cx) | lines_from_centre(yy, cy)] = 0.45
+
+    # 対角線
+    diagonal = (np.abs((yy - cy) * width - (xx - cx) * height) < thin * max(width, height) / 2.0) | \
+               (np.abs((yy - cy) * width + (xx - cx) * height) < thin * max(width, height) / 2.0)
+    img[diagonal] = 0.7
+
+    # 円（中央と四隅）
+    ring = max(1.0, short / 300.0)
+    corner = short * 0.16
+    centres = [
+        (cx, cy, short * 0.44),
+        (corner, corner, corner * 0.7),
+        (width - corner, corner, corner * 0.7),
+        (corner, height - corner, corner * 0.7),
+        (width - corner, height - corner, corner * 0.7),
+    ]
+    for x0, y0, r in centres:
+        radius = np.sqrt((xx - x0) ** 2 + (yy - y0) ** 2)
+        img[np.abs(radius - r) < ring] = 1.0
+
+    # 外周の交互ブロック（中心起点で左右・上下を揃えます）
+    thickness = max(1, short // 40)
+    step = max(1, round(width / blocks))
+
+    def alternating(count: int, centre: float) -> np.ndarray:
+        index = np.floor(np.abs(np.arange(count) + 0.5 - centre) / step)
+        return np.where(index % 2 == 0, 1.0, 0.0).astype(np.float32)
+
+    along_x = alternating(width, cx)
+    along_y = alternating(height, cy)
+    img[:thickness, :, :] = along_x[None, :, None]
+    img[height - thickness :, :, :] = along_x[None, :, None]
+    img[:, :thickness, :] = along_y[:, None, None]
+    img[:, width - thickness :, :] = along_y[:, None, None]
+    return img
+
+
+def resolutioncard(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """解像の確認に寄せたテストカード（この実装の自作構成）.
+
+    中央だけでなく四隅にもくさびを置きます。レンズや処理によっては、
+    画面の中央と周辺で解像限界が違うためです。上下には周波数の違う縞を並べ、
+    どのくらいの細かさから落ちるかを合わせて読めるようにしています。
+
+    ``lines`` でくさびの本数、``periods`` で縞の周期を指定します。
+    """
+    lines = int(_opt(options, "lines", 10))
+    periods = [int(p) for p in _opt(options, "periods", [16, 8, 4, 3, 2])]
+    background = float(_opt(options, "background", 0.5))
+    if any(p < 2 for p in periods):
+        raise ValueError("resolutioncard の periods は 2 以上にしてください")
+
+    img = _canvas(width, height, background)
+    short = min(width, height)
+
+    # 中央のくさび
+    centre = wedge(width, height, {
+        "lines": lines, "inner": 0.035, "outer": 0.17, "background": background,
+    })[:, :, 0]
+    drawn = centre != np.float32(background)
+    img[drawn] = centre[drawn][:, None]
+
+    # 四隅のくさび。小さい絵を作って貼り付けます。
+    box = int(short * 0.28)
+    if box >= 8:
+        corner = wedge(box, box, {
+            "lines": lines, "inner": 0.06, "outer": 0.46, "background": background,
+        })
+        margin = max(1, short // 24)
+        spots = [
+            (margin, margin),
+            (width - box - margin, margin),
+            (margin, height - box - margin),
+            (width - box - margin, height - box - margin),
+        ]
+        for x0, y0 in spots:
+            if x0 < 0 or y0 < 0 or x0 + box > width or y0 + box > height:
+                continue
+            region = img[y0 : y0 + box, x0 : x0 + box, :]
+            mask = corner[:, :, 0] != np.float32(background)
+            region[mask] = corner[mask]
+
+    # 上下の縞。左から右へ細かくしていきます。
+    band = max(2, short // 14)
+    xx, _ = _coords(width, height)
+    span0 = int(width * 0.22)
+    span1 = int(width * 0.78)
+    block = max(1, (span1 - span0) // len(periods))
+    for row0 in (int(height * 0.12), int(height * 0.88) - band):
+        for index, period in enumerate(periods):
+            x0 = span0 + index * block
+            x1 = x0 + block if index < len(periods) - 1 else span1
+            if x0 >= width:
+                break
+            stripe = ((np.floor(xx[row0 : row0 + band, x0:x1]) % period) < (period / 2)).astype(np.float32)
+            img[row0 : row0 + band, x0:x1, :] = stripe[:, :, None]
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -1047,6 +1256,10 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorramp": colorramp,
     "colormatrix": colormatrix,
     "noise": noise,
+    "barshd": barshd,
+    "splitsteps": splitsteps,
+    "geometrycard": geometrycard,
+    "resolutioncard": resolutioncard,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)

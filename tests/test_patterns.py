@@ -517,3 +517,78 @@ def test_noise_colour_channels_differ():
     img = render("noise", 64, 64, {"seed": 5, "mono": False})
     assert not np.array_equal(img[:, :, 0], img[:, :, 1])
     assert not np.array_equal(img[:, :, 1], img[:, :, 2])
+
+
+# --- 派生パターン（バー・階調・カード） ---
+
+
+def test_barshd_has_four_bands_with_flanks():
+    """4 段に分かれ、1 段目の左右に脇の灰色があること."""
+    img = render("barshd", 800, 500, {"level": 0.75, "flank": 0.4})
+    assert tuple(img[10, 5]) == pytest.approx((0.4, 0.4, 0.4))     # 左の脇
+    assert tuple(img[10, -5]) == pytest.approx((0.4, 0.4, 0.4))    # 右の脇
+    # 段ごとに並びが変わること
+    rows = [img[int(500 * r), :, 0] for r in (0.2, 0.62, 0.72, 0.9)]
+    for a, b in zip(rows, rows[1:]):
+        assert not np.array_equal(a, b)
+
+
+def test_barshd_second_band_reverses_the_first():
+    """2 段目が 1 段目の逆順であること（上下で色が合うかを見るため）."""
+    img = render("barshd", 800, 500)
+    top = img[100]
+    second = img[int(500 * 0.62)]
+    side = round(800 * 0.05)
+    inner0, inner1 = side, 800 - side
+    edges = [inner0 + round(i * (inner1 - inner0) / 7) for i in range(8)]
+    for i in range(7):
+        x = (edges[i] + edges[i + 1]) // 2
+        mirror = (edges[6 - i] + edges[7 - i]) // 2
+        assert tuple(top[x]) == pytest.approx(tuple(second[mirror]), abs=1e-6)
+
+
+def test_splitsteps_rows_run_in_opposite_directions():
+    """上段は左から明るく、下段は右から明るくなること."""
+    img = render("splitsteps", 440, 100, {"steps": 11})[:, :, 0]
+    top, bottom = img[20], img[80]
+    assert top[10] < top[-10]
+    assert bottom[10] > bottom[-10]
+    assert float(top[10]) == pytest.approx(float(bottom[-10]), abs=1e-6)
+
+
+def test_splitsteps_puts_different_levels_next_to_each_other():
+    """上下で必ず違う段が隣り合うこと（真ん中の段を除く）."""
+    img = render("splitsteps", 440, 100, {"steps": 11})[:, :, 0]
+    top, bottom = img[20], img[80]
+    differing = int(np.count_nonzero(np.abs(top - bottom) > 1e-6))
+    assert differing > 440 * 0.8
+
+
+def test_geometrycard_has_no_colour():
+    """幾何だけを見るので、色を持たないこと."""
+    img = render("geometrycard", 400, 300)
+    assert np.array_equal(img[:, :, 0], img[:, :, 1])
+    assert np.array_equal(img[:, :, 1], img[:, :, 2])
+
+
+def test_geometrycard_geometry_is_symmetric():
+    img = render("geometrycard", 400, 300)[:, :, 0]
+    assert np.allclose(img, img[:, ::-1], atol=1e-6)
+    assert np.allclose(img, img[::-1, :], atol=1e-6)
+
+
+def test_resolutioncard_has_wedges_in_the_corners_and_centre():
+    """四隅と中央のどこにも白黒の線があること."""
+    img = render("resolutioncard", 800, 600)[:, :, 0]
+    short = min(800, 600)
+    box = int(short * 0.28)
+    margin = max(1, short // 24)
+    regions = [
+        img[margin : margin + box, margin : margin + box],                       # 左上
+        img[margin : margin + box, 800 - box - margin : 800 - margin],           # 右上
+        img[600 - box - margin : 600 - margin, margin : margin + box],           # 左下
+        img[600 - box - margin : 600 - margin, 800 - box - margin : 800 - margin],  # 右下
+        img[250:350, 350:450],                                                   # 中央
+    ]
+    for region in regions:
+        assert region.min() == 0.0 and region.max() == 1.0
