@@ -1,5 +1,7 @@
 using System.IO;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 
 namespace RawInspector.Models;
 
@@ -43,12 +45,23 @@ public sealed class UserLayout
         }
     }
 
+    /// <summary>
+    /// 日本語をそのまま書くための設定です。
+    /// 既定のままだと「名前順」が "名前順" になります。読み戻せはしますが、
+    /// 開いて確かめたり手で直したりできる形にしておきたいので、エスケープしません。
+    /// </summary>
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+    };
+
     public void Save()
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, WriteOptions));
         }
         catch
         {
