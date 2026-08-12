@@ -5,6 +5,11 @@
   <Application.Resources>
 
     <SolidColorBrush x:Key="PanelBackground" Color="#FFF7F8FA" />
+    <!-- 窓が2つになったので、両方で使うものはここへ置きます。
+         MainWindow の中に置くと、生成窓から参照できません。 -->
+    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <SolidColorBrush x:Key="WindowBackground" Color="#FFF4F6F9" />
+
     <SolidColorBrush x:Key="PanelBorder" Color="#FFD0D5DC" />
     <SolidColorBrush x:Key="AccentText" Color="#FF005CB4" />
     <SolidColorBrush x:Key="BadgeBackground" Color="#FFE8F2FE" />

@@ -834,6 +834,32 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>true のあいだ、RAWを開いても全体表示へ戻しません。</summary>
     private bool _keepScaleOnLoad;
 
+    /// <summary>
+    /// 生成の窓へ渡す既定の出力先です。
+    /// いま開いているフォルダをそのまま使います。作ったものがその場で一覧へ並ぶためです。
+    /// まだ何も開いていなければ、出力先か作業フォルダにします。
+    /// </summary>
+    public string GeneratedFolder =>
+        _currentFolder ?? OutputFolder ?? Environment.CurrentDirectory;
+
+    /// <summary>
+    /// 生成された manifest を一覧へ取り込みます。
+    ///
+    /// 開いているフォルダの中なら読み直して選び、外なら**そのフォルダへ移ります**。
+    /// 作ったものが見えないままだと、生成できたのかどうかが分かりません。
+    /// </summary>
+    public void AdoptGenerated(string manifestPath)
+    {
+        var folder = Path.GetDirectoryName(manifestPath);
+        if (folder is null) return;
+
+        var sameFolder = _currentFolder is not null
+            && string.Equals(Path.GetFullPath(folder), Path.GetFullPath(_currentFolder), StringComparison.OrdinalIgnoreCase);
+
+        LoadFolder(sameFolder ? _currentFolder! : folder, manifestPath, sameFolder ? _scalePercent : null);
+        StatusText = $"生成したものを開きました: {Path.GetFileName(manifestPath)}";
+    }
+
     /// <summary>フォルダを読み込みます（ダイアログを出さずに指定できるよう公開しています）。</summary>
     public void LoadFolder(string folder, string? selectPath = null, double? keepScale = null)
     {

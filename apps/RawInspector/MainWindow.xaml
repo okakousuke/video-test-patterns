@@ -9,7 +9,6 @@
         UseLayoutRounding="True">
 
   <Window.Resources>
-    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     <local:BoolToHiddenConverter x:Key="BoolToHidden" />
 
     <!-- プレビュー背景の市松模様。画像の外側だと分かればよいので、コントラストは低くします。
@@ -70,6 +69,10 @@
         <Button DockPanel.Dock="Left" Content="⟳" Width="34" MinWidth="34" FontSize="15" Margin="0,0,6,0"
                 Command="{Binding RefreshFolderCommand}"
                 ToolTip="いま開いているフォルダを読み直します（F5）。選んでいたRAWと表示倍率はそのまま保ちます。" />
+
+        <!-- 作ってすぐ見る、が1周するように、開く操作の隣へ置きます。 -->
+        <Button DockPanel.Dock="Left" Content="＋ 生成..." Margin="0,0,12,0" Click="OnGenerateClick"
+                ToolTip="パターンを生成します。画素を作るのはPython側の生成器で、ここはその呼び出しです。生成したRAWはこの一覧へ取り込んで選択します。" />
 
         <!-- 書き出しはすべてここへ集めます。保存先の指定と保存の操作が離れていると、
              どこへ出るのか分からないまま押すことになります。 -->

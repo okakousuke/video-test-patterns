@@ -1,0 +1,154 @@
+<Window x:Class="RawInspector.GeneratorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="パターンを生成" Height="720" Width="720"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WindowBackground}">
+  <Window.Resources>
+    <Style TargetType="TextBlock" x:Key="FieldLabel">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Margin" Value="0,0,10,6" />
+      <Setter Property="MinWidth" Value="110" />
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Margin" Value="0,0,10,6" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="4,3" />
+    </Style>
+  </Window.Resources>
+
+  <DockPanel Margin="12">
+
+    <!-- 生成器へ繋がっていないと何も選べないので、いちばん上に出します。 -->
+    <Border DockPanel.Dock="Top" Margin="0,0,0,10" Padding="10,8" CornerRadius="4"
+            Background="#FFFFF4E5" BorderBrush="#FFE0B77A" BorderThickness="1"
+            Visibility="{Binding HasCatalogError, Converter={StaticResource BoolToVisibility}}">
+      <StackPanel>
+        <TextBlock Text="生成器へ接続できていません" FontWeight="SemiBold" Foreground="#FF7A4E00" />
+        <TextBlock Text="{Binding CatalogError}" TextWrapping="Wrap" Margin="0,4,0,0"
+                   Foreground="#FF7A4E00" FontFamily="{StaticResource MonoFont}" FontSize="11" />
+      </StackPanel>
+    </Border>
+
+    <!-- 下部: 実行するコマンドと結果 -->
+    <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="10,8" CornerRadius="4"
+            Background="{StaticResource GroupFill}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="10,0,0,0">
+          <Button Content="コマンドをコピー" Command="{Binding CopyCommandCommand}" Margin="0,0,6,0"
+                  ToolTip="このまま端末へ貼って実行できます。" />
+          <Button Content="生成" Command="{Binding GenerateCommand}" MinWidth="80" Margin="0"
+                  ToolTip="生成器を実行します。できたRAWは一覧へ取り込んで選択します。" />
+        </StackPanel>
+        <StackPanel>
+          <!-- 何が実行されるのかを隠しません。中を見せておくほうが、あとから追えます。 -->
+          <TextBlock Text="実行するコマンド" Foreground="{StaticResource MutedText}" FontSize="11" />
+          <TextBox Text="{Binding CommandLine, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                   FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="0,2,0,0"
+                   Background="White" MaxHeight="60" VerticalScrollBarVisibility="Auto" />
+          <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" />
+          <TextBox Text="{Binding Log, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                   FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="0,4,0,0"
+                   Background="White" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                   Visibility="{Binding HasLog, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+
+        <TextBlock Text="何を描くか" Style="{StaticResource SectionHeader}" />
+        <Grid Margin="0,0,0,10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="パターン" Style="{StaticResource FieldLabel}" />
+          <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Patterns}" SelectedItem="{Binding Pattern}"
+                    IsEditable="False" ToolTip="生成する絵です。何を見るための絵かは、本体側の説明欄に出ます。" />
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="サイズ" Style="{StaticResource FieldLabel}" />
+          <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+            <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+            <TextBlock Text="x" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
+            <TextBox Text="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock Text="どう格納するか" Style="{StaticResource SectionHeader}" />
+        <WrapPanel Margin="0,0,0,4">
+          <TextBlock Text="色モデル" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding ColorModels}" SelectedItem="{Binding ColorModel}" MinWidth="90" />
+          <TextBlock Text="色差" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding Subsamplings}" SelectedItem="{Binding Subsampling}" MinWidth="80" />
+          <TextBlock Text="ビット深度" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding BitDepths}" SelectedItem="{Binding BitDepth}" MinWidth="70" />
+          <TextBlock Text="格納形式" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding Storages}" SelectedItem="{Binding Storage}" MinWidth="90" />
+        </WrapPanel>
+        <WrapPanel Margin="0,0,0,10">
+          <TextBlock Text="range" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding Range}" MinWidth="90" />
+          <TextBlock Text="matrix" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding Matrices}" SelectedItem="{Binding Matrix}" MinWidth="90" />
+          <TextBlock Text="10bitの詰め" Style="{StaticResource FieldLabel}" />
+          <ComboBox ItemsSource="{Binding Alignments}" SelectedItem="{Binding Alignment}" MinWidth="70"
+                    ToolTip="16bitコンテナへ10bitを入れるときの寄せ方です。8bitでは使いません。" />
+        </WrapPanel>
+
+        <!-- 成立しない理由はここに出します。選択肢を黙って消すと、なぜ消えたのか分かりません。 -->
+        <Border Padding="10,8" CornerRadius="4" Margin="0,0,0,10"
+                Background="#FFFDECEA" BorderBrush="#FFE7A9A2" BorderThickness="1"
+                Visibility="{Binding HasProblem, Converter={StaticResource BoolToVisibility}}">
+          <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Foreground="#FF8A2A20" />
+        </Border>
+        <TextBlock Text="{Binding SizeNote}" Foreground="{StaticResource MutedText}" Margin="0,0,0,10"
+                   TextWrapping="Wrap" />
+
+        <TextBlock Text="パターン固有の指定" Style="{StaticResource SectionHeader}" />
+        <TextBlock Text="1行に1つ、KEY=VALUE で書きます（例: on=[1,0,0]）。使える指定は本体側の説明欄に出ます。"
+                   Foreground="{StaticResource MutedText}" FontSize="11" Margin="0,0,0,4" TextWrapping="Wrap" />
+        <TextBox Text="{Binding PatternOptions, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True" Height="70" FontFamily="{StaticResource MonoFont}"
+                 VerticalScrollBarVisibility="Auto" Margin="0,0,0,10" />
+
+        <TextBlock Text="どこへ出すか" Style="{StaticResource SectionHeader}" />
+        <Grid Margin="0,0,0,10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="フォルダ" Style="{StaticResource FieldLabel}" />
+          <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding OutputFolder, UpdateSourceTrigger=PropertyChanged}" />
+          <Button Grid.Row="0" Grid.Column="2" Content="選ぶ…" Click="OnPickFolder" Margin="0,0,0,6" />
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="ファイル名" Style="{StaticResource FieldLabel}" />
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding OutputName, UpdateSourceTrigger=PropertyChanged}"
+                   ToolTip="空にすると条件から名前を作ります。拡張子は生成器が付けます（.raw / .preview.png / .manifest.json）。" />
+        </Grid>
+
+        <TextBlock Text="生成器の呼び出し方" Style="{StaticResource SectionHeader}" />
+        <TextBlock Text="画素を作る処理はPython側の生成器にあります。ここはその呼び出しだけです。"
+                   Foreground="{StaticResource MutedText}" FontSize="11" Margin="0,0,0,4" TextWrapping="Wrap" />
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="接続し直す" Click="OnReconnect" Margin="6,0,0,0" />
+          <TextBox Text="{Binding GeneratorCommand, UpdateSourceTrigger=LostFocus}"
+                   FontFamily="{StaticResource MonoFont}" Margin="0" />
+        </DockPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

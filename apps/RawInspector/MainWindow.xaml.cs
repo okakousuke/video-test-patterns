@@ -109,6 +109,27 @@ public partial class MainWindow : Window
     private void OnFitClick(object sender, RoutedEventArgs e) => Fit();
 
     /// <summary>
+    /// 生成の窓を開きます。作り終えたらフォルダを読み直して、できたものを選びます。
+    /// 出したまま作り続けられるよう、閉じるまで使い回します。
+    /// </summary>
+    private GeneratorWindow? _generatorWindow;
+
+    private void OnGenerateClick(object sender, RoutedEventArgs e)
+    {
+        if (_generatorWindow is { IsLoaded: true })
+        {
+            _generatorWindow.Activate();
+            return;
+        }
+
+        _generatorWindow = new GeneratorWindow(_viewModel.GeneratedFolder, OnGenerated) { Owner = this };
+        _generatorWindow.Closed += (_, _) => _generatorWindow = null;
+        _generatorWindow.Show();
+    }
+
+    private void OnGenerated(string manifestPath) => _viewModel.AdoptGenerated(manifestPath);
+
+    /// <summary>
     /// 画像全体が表示領域へ収まる倍率にします。表示領域の大きさはビューしか知らないため、
     /// ViewModelではなくここで計算します。
     /// </summary>
