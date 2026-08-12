@@ -128,6 +128,17 @@ python tools/generate_pattern_samples.py
 python tools/make_reference_raws.py
 ```
 
+同梱するものを小さくしているのは容量のためです。同じ 20 形式を実サイズで出すと、
+**HD で 57MB、FHD で 128MB、4K で 511MB** になります。
+実サイズで見たいときは `--size` を指定して、`generated/` 側へ出します。
+
+```sh
+python tools/make_reference_raws.py --size FHD --out generated
+```
+
+ファイル名にサイズは入れません。形式ごとの違いだけを見るためのものなので、
+同じ場所にサイズが混ざっているほうが困ります（同じ名前で上書きされます）。
+
 ### 例: 4:2:0 で色が消えるのを見る
 
 赤と青の 1 画素縞は、輝度がほぼ同じで色差だけが遠い組み合わせです。
