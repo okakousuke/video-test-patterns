@@ -1,0 +1,49 @@
+{
+  "manifest_version": 1,
+  "generator": {
+    "name": "video-test-patterns",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-08-12T08:50:38+00:00",
+  "parameters": {
+    "pattern": "hatch",
+    "width": 192,
+    "height": 144,
+    "color_model": "ycbcr",
+    "subsampling": "4:2:0",
+    "bit_depth": 8,
+    "range": "limited",
+    "matrix": "bt709",
+    "storage": "nv12",
+    "alignment": "lsb",
+    "pattern_options": {
+      "on": [
+        1,
+        0,
+        0
+      ],
+      "off": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "parameters_sha256": "9ffbc180e658f56817cbd245123187ad05edfdd256a6b80a34d88aed2679146a",
+  "raw_bytes": 41472,
+  "files": [
+    {
+      "kind": "png",
+      "path": "hatch_redblue_ycbcr420_8bit_nv12.preview.png",
+      "bytes": 443,
+      "sha256": "a76be4c87405548114405df1e7af6b12765bbf35511adaec662fe314447344a9"
+    },
+    {
+      "kind": "raw",
+      "path": "hatch_redblue_ycbcr420_8bit_nv12.raw",
+      "bytes": 41472,
+      "sha256": "0cee8bb11f9198a9172da2ced7439e12cafc11b0c1741559ff8786bbdd77a970"
+    }
+  ],
+  "roundtrip_verified": true
+}

@@ -16,6 +16,7 @@ public sealed class RawImage
 
     private readonly bool _isYcbcr;
     private readonly bool _isPlanar;
+    private readonly bool _isPacked;
     private readonly bool _isNv12;
     private readonly bool _isP010;
     private readonly bool _isV210;
@@ -46,6 +47,7 @@ public sealed class RawImage
 
         _isYcbcr = manifest.IsYcbcr;
         _isPlanar = ManifestInfo.Same(manifest.Storage, "planar");
+        _isPacked = ManifestInfo.Same(manifest.Storage, "packed");
         _isNv12 = ManifestInfo.Same(manifest.Storage, "nv12");
         _isP010 = ManifestInfo.Same(manifest.Storage, "p010");
         _isV210 = ManifestInfo.Same(manifest.Storage, "v210");
@@ -138,7 +140,9 @@ public sealed class RawImage
                 ReadCode(chroma + _bytesPerSample, alignment));
         }
 
-        if (_isYcbcr && _is422)
+        // UYVY は packed のときだけです。4:2:2 でも planar なら下の I422 として読みます。
+        // ここで storage を見ていないと、4:2:2 planar を UYVY として読んでしまいます。
+        if (_isYcbcr && _is422 && _isPacked)
         {
             // UYVY: 2画素で Cb Y0 Cr Y1 の4バイト。
             var source = (y * Width + x / 2 * 2) * 2;

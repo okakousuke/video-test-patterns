@@ -103,6 +103,18 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 python tools/generate_pattern_samples.py
 ```
 
+### 参照用の RAW と manifest
+
+[`samples/raw/`](samples/raw/) に、**格納形式を網羅した RAW と manifest** を同梱しています。
+生成器を動かさなくても、読み手側の実装をこのまま試せます。
+
+同じ絵（`colorbar`）を 192 × 144 で全形式へ出したもので、21 組・約 1.7 MB です。
+絵を固定しているのは、形式ごとの違いだけを見るためです。作り直しは次で行えます。
+
+```sh
+python tools/make_reference_raws.py
+```
+
 ### 例: 4:2:0 で色が消えるのを見る
 
 赤と青の 1 画素縞は、輝度がほぼ同じで色差だけが遠い組み合わせです。
