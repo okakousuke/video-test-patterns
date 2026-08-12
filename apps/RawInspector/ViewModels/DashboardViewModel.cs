@@ -8,7 +8,10 @@ namespace RawInspector.ViewModels;
 /// <summary>素材フォルダ1つぶんの表示です。</summary>
 public sealed class FolderCard : ObservableObject
 {
-    /// <summary>見出しに添える絵記号です。画像を持たないので、配布するものが増えません。</summary>
+    /// <summary>
+    /// アイコンの場所です。絵文字はフォントに依存して環境ごとに形が変わるので、
+    /// このリポジトリの中に画像を持ちます。
+    /// </summary>
     public required string Icon { get; init; }
 
     public required string Title { get; init; }
@@ -78,11 +81,11 @@ public sealed class DashboardViewModel : ObservableObject
     /// </summary>
     public IReadOnlyList<BatchTool> Tools { get; } =
     [
-        new("🎞", "全パターンを1本ずつ", "42パターンを、格納形式とサイズを散らした条件で1本ずつ作ります。",
+        new("icons/patterns.png", "全パターンを1本ずつ", "42パターンを、格納形式とサイズを散らした条件で1本ずつ作ります。",
             "tools/make_samples.py", false),
-        new("🎛", "条件を振って量産", "塗り違い・サイズ違い・形式違いを量産します（raster / cards / resolution の3群）。",
+        new("icons/variants.png", "条件を振って量産", "塗り違い・サイズ違い・形式違いを量産します（raster / cards / resolution の3群）。",
             "tools/make_variant_raws.py", true),
-        new("🧱", "格納形式を網羅", "同じ絵を全形式で出します。形式ごとの違いだけを見るためのものです。",
+        new("icons/storage.png", "格納形式を網羅", "同じ絵を全形式で出します。形式ごとの違いだけを見るためのものです。",
             "tools/make_reference_raws.py", false),
     ];
 
@@ -157,7 +160,7 @@ public sealed class DashboardViewModel : ObservableObject
         if (RepositoryLocator.Resolve("generated") is { } generated)
             Folders.Add(new FolderCard
             {
-                Icon = "🧪",
+                Icon = "icons/generated.png",
                 Title = "generated",
                 Purpose = "作って捨てる場所です。.gitignore の対象で、リポジトリには残りません。",
                 Path = generated,
@@ -166,7 +169,7 @@ public sealed class DashboardViewModel : ObservableObject
         if (RepositoryLocator.Resolve("samples", "raw") is { } samples)
             Folders.Add(new FolderCard
             {
-                Icon = "📦",
+                Icon = "icons/samples.png",
                 Title = "samples/raw",
                 Purpose = "リポジトリに同梱している参照用です。読み手側の実装の入力テストにそのまま使えます。",
                 Path = samples,
@@ -175,7 +178,7 @@ public sealed class DashboardViewModel : ObservableObject
         if (lastFolder is { Length: > 0 } && Folders.All(f => !SamePath(f.Path, lastFolder)))
             Folders.Add(new FolderCard
             {
-                Icon = "🕘",
+                Icon = "icons/recent.png",
                 Title = "前回開いていた場所",
                 Purpose = lastFolder,
                 Path = lastFolder,

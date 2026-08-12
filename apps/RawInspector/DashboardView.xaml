@@ -24,7 +24,7 @@
       <!-- 1. 素材 -->
       <DockPanel Margin="0,0,0,6">
         <Button DockPanel.Dock="Right" Content="数え直す" Command="{Binding RefreshCommand}" Margin="0" />
-        <TextBlock Text="📂 素材" Style="{StaticResource SectionHeader}" VerticalAlignment="Center" Margin="0" />
+        <TextBlock Text="素材" Style="{StaticResource SectionHeader}" VerticalAlignment="Center" Margin="0" />
       </DockPanel>
 
       <ItemsControl ItemsSource="{Binding Folders}">
@@ -38,8 +38,9 @@
                                   RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                         CommandParameter="{Binding}"
                         ToolTip="このフォルダを一覧へ読み込みます。" />
-                <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" FontSize="26" Margin="0,0,12,0"
-                           VerticalAlignment="Top" />
+                <!-- 44px です。32px より下だと、格子や時計の針が灰色に潰れます。 -->
+                <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
+                       Margin="0,0,12,0" VerticalAlignment="Top" />
                 <StackPanel>
                   <TextBlock Text="{Binding Title}" FontWeight="Bold" />
                   <!-- 件数だけでなく、読めないものの数も出します。
@@ -59,16 +60,16 @@
       </ItemsControl>
 
       <!-- 2. 生成器 -->
-      <TextBlock Text="⚙ 生成器" Style="{StaticResource SectionHeader}" Margin="0,10,0,4" />
+      <TextBlock Text="生成器" Style="{StaticResource SectionHeader}" Margin="0,10,0,4" />
       <Border Style="{StaticResource Card}">
         <DockPanel>
           <!-- 繋がっているかどうかは、文字を読む前に色と形で分かるようにします。 -->
-          <TextBlock DockPanel.Dock="Left" FontSize="26" Margin="0,0,12,0" VerticalAlignment="Top"
-                     Text="✅" Foreground="#FF2E7D32"
-                     Visibility="{Binding GeneratorReady, Converter={StaticResource BoolToVisibility}}" />
-          <TextBlock DockPanel.Dock="Left" FontSize="26" Margin="0,0,12,0" VerticalAlignment="Top"
-                     Text="⚠" Foreground="#FFB3261E"
-                     Visibility="{Binding GeneratorNotReady, Converter={StaticResource BoolToVisibility}}" />
+          <Image DockPanel.Dock="Left" Source="icons/gen-ok.png" Width="44" Height="44"
+                 Margin="0,0,12,0" VerticalAlignment="Top"
+                 Visibility="{Binding GeneratorReady, Converter={StaticResource BoolToVisibility}}" />
+          <Image DockPanel.Dock="Left" Source="icons/gen-ng.png" Width="44" Height="44"
+                 Margin="0,0,12,0" VerticalAlignment="Top"
+                 Visibility="{Binding GeneratorNotReady, Converter={StaticResource BoolToVisibility}}" />
         <StackPanel>
           <TextBlock Text="{Binding GeneratorText}" TextWrapping="Wrap"
                      FontFamily="{StaticResource MonoFont}" FontSize="12" />
@@ -84,7 +85,7 @@
       </Border>
 
       <!-- 3. 一括生成 -->
-      <TextBlock Text="🗂 一括生成" Style="{StaticResource SectionHeader}" Margin="0,10,0,4" />
+      <TextBlock Text="一括生成" Style="{StaticResource SectionHeader}" Margin="0,10,0,4" />
       <ItemsControl ItemsSource="{Binding Tools}">
         <ItemsControl.ItemTemplate>
           <DataTemplate>
@@ -104,8 +105,9 @@
                           CommandParameter="{Binding}"
                           ToolTip="生成器を呼んで実際に作ります。本数によっては数分かかります。" />
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" FontSize="26" Margin="0,0,12,0"
-                           VerticalAlignment="Top" />
+                <!-- 44px です。32px より下だと、格子や時計の針が灰色に潰れます。 -->
+                <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
+                       Margin="0,0,12,0" VerticalAlignment="Top" />
                 <StackPanel>
                   <TextBlock Text="{Binding Title}" FontWeight="Bold" />
                   <TextBlock Text="{Binding Purpose}" Margin="0,3,0,0" TextWrapping="Wrap"

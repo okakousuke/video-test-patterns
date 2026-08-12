@@ -17,5 +17,8 @@
     <Resource Include="app.ico" />
     <!-- 虫眼鏡カーソル。tools/make_cursor.py で生成しています。 -->
     <Resource Include="zoom.cur" />
+    <!-- ダッシュボードのアイコン。128px の PNG を置き、表示側で縮めます。
+         絵文字はフォントに依存して環境で形が変わるので、画像を持ちます。 -->
+    <Resource Include="icons\*.png" />
   </ItemGroup>
 </Project>
