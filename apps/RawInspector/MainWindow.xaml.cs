@@ -1,7 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
+using RawInspector.Decoding;
 using RawInspector.Models;
 using RawInspector.ViewModels;
 
@@ -20,6 +23,9 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.Tool)) UpdatePreviewCursor();
+            if (e.PropertyName is nameof(MainViewModel.IsPixelGridVisible)
+                or nameof(MainViewModel.ScalePercent)
+                or nameof(MainViewModel.ChromaBlockWidth)) UpdatePixelGrid();
         };
         RestoreLayout();
 
@@ -218,6 +224,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>モードが分かるようにカーソルを変えます。</summary>
+    // --- 画素の境目 ---
+    //
+    // 線を1色で引くと、その色に近い画素の上で消えます。白い絵なら白い線が、
+    // 黒い絵なら黒い線が見えません。ここでは同じ位置に白と黒の破線を
+    // 半周期ずらして重ね、どちらかが必ず見えるようにします。
+    //
+    // 1本のブラシをタイル状に敷き詰めるので、線の数がいくつになっても
+    // 図形は1組だけです。1画素ごとに線の要素を作ると、拡大したときに数万個になります。
+
+    private void UpdatePixelGrid() =>
+        PixelGridOverlay.Fill = _viewModel.IsPixelGridVisible
+            ? PixelGrid.Build(_viewModel.PointsPerPixel, _viewModel.ChromaBlockWidth, _viewModel.ChromaBlockHeight)
+            : null;
+
     private void UpdatePreviewCursor() =>
         PreviewScroll.Cursor = _viewModel.Tool switch
         {

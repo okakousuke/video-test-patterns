@@ -448,6 +448,9 @@ public sealed class MainViewModel : ObservableObject
 
         Raise(nameof(SelectedMatrix));
         Raise(nameof(SelectedRange));
+        Raise(nameof(ChromaBlockWidth));
+        Raise(nameof(ChromaBlockHeight));
+        Raise(nameof(IsPixelGridVisible));
         Raise(nameof(Channels));
         Raise(nameof(ShowFirstChannel));
         Raise(nameof(ShowSecondChannel));
@@ -582,6 +585,9 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(ScaledWidth));
             Raise(nameof(ScaledHeight));
             Raise(nameof(ScaleText));
+            Raise(nameof(PointsPerPixel));
+            Raise(nameof(CanShowPixelGrid));
+            Raise(nameof(IsPixelGridVisible));
             // 縮小しているときは絵から画素が落ちます。作り方の説明にもそれを出します。
             UpdatePreviewRecipe();
         }
@@ -591,6 +597,37 @@ public sealed class MainViewModel : ObservableObject
 
     public double ScaledWidth => PreviewPixelWidth * _scalePercent / 100.0;
     public double ScaledHeight => PreviewPixelHeight * _scalePercent / 100.0;
+
+    // --- 画素グリッド ---
+    //
+    // 拡大しても、隣り合う画素が同じ値だと境目が見えません。
+    // 「1画素の線」なのか「2画素の帯」なのかは、境目が引かれて初めて数えられます。
+    //
+    // 色差ブロックの線を別に引くのは、そちらのほうが読み取りたいことが多いためです。
+    // 4:2:0 なら 2 x 2 の画素が同じ色差を共有しています。その枠を出せば、
+    // 「間引かれた」という言葉が画面の上のどの範囲を指すのかが目で分かります。
+
+    /// <summary>1画素が画面で何点になるかです。</summary>
+    public double PointsPerPixel => _scalePercent / 100.0;
+
+    /// <summary>
+    /// グリッドを引けるだけ拡大されているかです。
+    /// 1画素が細かいうちに線を引くと、線のほうが画素より太くなって絵が読めなくなります。
+    /// </summary>
+    public bool CanShowPixelGrid => PointsPerPixel >= PixelGrid.MinPointsPerPixel;
+
+    private bool _showPixelGrid;
+    public bool ShowPixelGrid
+    {
+        get => _showPixelGrid;
+        set { if (Set(ref _showPixelGrid, value)) Raise(nameof(IsPixelGridVisible)); }
+    }
+
+    /// <summary>実際に線を出すかどうかです（入れていても、拡大が足りなければ出しません）。</summary>
+    public bool IsPixelGridVisible => _showPixelGrid && CanShowPixelGrid;
+
+    public int ChromaBlockWidth => _rawImage?.ChromaBlockWidth ?? 1;
+    public int ChromaBlockHeight => _rawImage?.ChromaBlockHeight ?? 1;
 
     // --- ピクセルプローブ ---
 

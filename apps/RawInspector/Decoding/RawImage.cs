@@ -170,6 +170,15 @@ public sealed class RawImage
     /// <summary>色差が間引かれている（＝アップサンプル方式が結果に効く）形式かどうか。</summary>
     public bool HasSubsampledChroma => _isYcbcr && !ManifestInfo.Same(_manifest.Subsampling, "4:4:4");
 
+    /// <summary>
+    /// 色差サンプル1つが受け持つ画素の数です（4:2:0 なら 2 x 2、4:2:2 なら 2 x 1）。
+    /// 間引きが無ければ 1 x 1 です。この範囲の画素は同じ色差を共有しているので、
+    /// 「どこまでが同じ色か」の境目がここになります。
+    /// </summary>
+    public int ChromaBlockWidth => _chromaWidth == 0 ? 1 : Width / _chromaWidth;
+
+    public int ChromaBlockHeight => _chromaHeight == 0 ? 1 : Height / _chromaHeight;
+
     /// <summary>成分の呼び名です。Y'CbCr なら Y'/Cb/Cr、RGB なら R/G/B。</summary>
     public (string First, string Second, string Third) ChannelLabels =>
         _isYcbcr ? ("Y'", "Cb", "Cr") : ("R", "G", "B");

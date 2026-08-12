@@ -385,6 +385,11 @@
                           ToolTip="表示倍率を1段階上げます（Ctrl++）。表示領域の中央は動きません。Ctrl+ホイールならカーソル位置が動きません。" />
                   <Button Content="等倍" Command="{Binding ActualSizeCommand}"
                           ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
+                  <!-- 拡大が足りないうちは線のほうが画素より太くなるので、押せなくします。 -->
+                  <ToggleButton Content="格子" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
+                                IsEnabled="{Binding CanShowPixelGrid}"
+                                ToolTip="画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。600% 以上で使えます。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"
                           ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
                 </StackPanel>
@@ -471,6 +476,7 @@
                    黒いパターンだと画像の端が背景と見分けられなくなるためです。 -->
               <Border x:Name="PreviewFrame" HorizontalAlignment="Center" VerticalAlignment="Center"
                       BorderBrush="#FF6E7480" BorderThickness="1">
+              <Grid>
               <Image x:Name="PreviewImageElement"
                      Source="{Binding PreviewImage}"
                      Width="{Binding ScaledWidth}" Height="{Binding ScaledHeight}"
@@ -548,6 +554,18 @@
                   </ContextMenu>
                 </Image.ContextMenu>
               </Image>
+
+              <!-- 画素の境目。画像とぴったり重ねるので、大きさは画像と同じ束縛にします。
+                   IsHitTestVisible を切っているのは、下の画像のマウス操作を邪魔しないためです
+                   （ここで受けてしまうと、プローブも右クリックも効かなくなります）。
+                   線そのものは拡大率に合わせてコード側で作ります（MainWindow.xaml.cs）。 -->
+              <Rectangle x:Name="PixelGridOverlay"
+                         Width="{Binding ScaledWidth}" Height="{Binding ScaledHeight}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         IsHitTestVisible="False"
+                         SnapsToDevicePixels="True"
+                         Visibility="{Binding IsPixelGridVisible, Converter={StaticResource BoolToVisibility}}" />
+              </Grid>
               </Border>
             </ScrollViewer>
 
