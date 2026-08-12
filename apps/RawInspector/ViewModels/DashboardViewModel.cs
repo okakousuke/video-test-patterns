@@ -8,6 +8,9 @@ namespace RawInspector.ViewModels;
 /// <summary>素材フォルダ1つぶんの表示です。</summary>
 public sealed class FolderCard : ObservableObject
 {
+    /// <summary>見出しに添える絵記号です。画像を持たないので、配布するものが増えません。</summary>
+    public required string Icon { get; init; }
+
     public required string Title { get; init; }
     public required string Purpose { get; init; }
     public required string Path { get; init; }
@@ -35,7 +38,7 @@ public sealed class FolderCard : ObservableObject
 /// <c>SupportsDryRun</c> は「作らずに何ができるかだけ出せるか」です。
 /// 持っていない道具に付けても効かないので、持っているものだけボタンを出します。
 /// </summary>
-public sealed record BatchTool(string Title, string Purpose, string Script, bool SupportsDryRun);
+public sealed record BatchTool(string Icon, string Title, string Purpose, string Script, bool SupportsDryRun);
 
 /// <summary>
 /// 開いたときに最初に出す画面です。
@@ -75,11 +78,11 @@ public sealed class DashboardViewModel : ObservableObject
     /// </summary>
     public IReadOnlyList<BatchTool> Tools { get; } =
     [
-        new("全パターンを1本ずつ", "42パターンを、格納形式とサイズを散らした条件で1本ずつ作ります。",
+        new("🎞", "全パターンを1本ずつ", "42パターンを、格納形式とサイズを散らした条件で1本ずつ作ります。",
             "tools/make_samples.py", false),
-        new("条件を振って量産", "塗り違い・サイズ違い・形式違いを量産します（raster / cards / resolution の3群）。",
+        new("🎛", "条件を振って量産", "塗り違い・サイズ違い・形式違いを量産します（raster / cards / resolution の3群）。",
             "tools/make_variant_raws.py", true),
-        new("格納形式を網羅", "同じ絵を全形式で出します。形式ごとの違いだけを見るためのものです。",
+        new("🧱", "格納形式を網羅", "同じ絵を全形式で出します。形式ごとの違いだけを見るためのものです。",
             "tools/make_reference_raws.py", false),
     ];
 
@@ -154,6 +157,7 @@ public sealed class DashboardViewModel : ObservableObject
         if (RepositoryLocator.Resolve("generated") is { } generated)
             Folders.Add(new FolderCard
             {
+                Icon = "🧪",
                 Title = "generated",
                 Purpose = "作って捨てる場所です。.gitignore の対象で、リポジトリには残りません。",
                 Path = generated,
@@ -162,6 +166,7 @@ public sealed class DashboardViewModel : ObservableObject
         if (RepositoryLocator.Resolve("samples", "raw") is { } samples)
             Folders.Add(new FolderCard
             {
+                Icon = "📦",
                 Title = "samples/raw",
                 Purpose = "リポジトリに同梱している参照用です。読み手側の実装の入力テストにそのまま使えます。",
                 Path = samples,
@@ -170,6 +175,7 @@ public sealed class DashboardViewModel : ObservableObject
         if (lastFolder is { Length: > 0 } && Folders.All(f => !SamePath(f.Path, lastFolder)))
             Folders.Add(new FolderCard
             {
+                Icon = "🕘",
                 Title = "前回開いていた場所",
                 Purpose = lastFolder,
                 Path = lastFolder,

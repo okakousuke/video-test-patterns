@@ -26,6 +26,7 @@ public partial class MainWindow : Window
             if (e.PropertyName is nameof(MainViewModel.IsPixelGridVisible)
                 or nameof(MainViewModel.ScalePercent)
                 or nameof(MainViewModel.ChromaBlockWidth)) UpdatePixelGrid();
+            if (e.PropertyName == nameof(MainViewModel.IsFullScreen)) ApplyFullScreen();
         };
         RestoreLayout();
 
@@ -104,6 +105,44 @@ public partial class MainWindow : Window
     {
         if (e.NewValue is ManifestEntryViewModel entry)
             _viewModel.SelectedEntry = entry;
+    }
+
+    // --- 全画面 ---
+    //
+    // 左右の欄は Collapsed にしても、列の幅（340px など）はそのまま残ります。
+    // 幅も 0 にしないと、絵の左右に空白の帯が残ってしまいます。
+    // 戻したときに元の幅へ返せるよう、畳む前に控えておきます。
+
+    private GridLength? _listWidthBeforeFullScreen;
+    private GridLength? _detailWidthBeforeFullScreen;
+    private WindowStyle _styleBeforeFullScreen;
+    private WindowState _stateBeforeFullScreen;
+
+    private void ApplyFullScreen()
+    {
+        if (_viewModel.IsFullScreen)
+        {
+            _listWidthBeforeFullScreen = ListColumn.Width;
+            _detailWidthBeforeFullScreen = DetailColumn.Width;
+            _styleBeforeFullScreen = WindowStyle;
+            _stateBeforeFullScreen = WindowState;
+
+            ListColumn.Width = new GridLength(0);
+            DetailColumn.Width = new GridLength(0);
+
+            // 枠まで消して画面いっぱいにします。最大化のままだとタイトルバーが残ります。
+            // 一度 Normal へ戻してから掛け直さないと、最大化中は枠の変更が効きません。
+            WindowState = WindowState.Normal;
+            WindowStyle = WindowStyle.None;
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            if (_listWidthBeforeFullScreen is { } list) ListColumn.Width = list;
+            if (_detailWidthBeforeFullScreen is { } detail) DetailColumn.Width = detail;
+            WindowStyle = _styleBeforeFullScreen;
+            WindowState = _stateBeforeFullScreen;
+        }
     }
 
     private void OnFitClick(object sender, RoutedEventArgs e) => Fit();

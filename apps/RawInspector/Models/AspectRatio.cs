@@ -41,31 +41,34 @@ public static class AspectRatio
     }
 
     /// <summary>
-    /// 「16:9 (1.778)」の形にします。約分した比が大きすぎるときは、
-    /// 数字だけでは読めないので小数を頼りにします。
+    /// 短い呼び名です。絞り込みの選択肢のように、並べて読むところで使います。
+    ///
+    /// 約分して 3 桁になると「683:384」のような読めない比になります（1366 x 768 がこれです）。
+    /// その場合は近い呼び名に「およそ」を付けます。**まとめてはいません。**
+    /// 1366 x 768 は 16:9 ちょうどではないので、同じものとして扱うと
+    /// 「16:9 で絞ったのに形が違う」ことになります。
     /// </summary>
-    public static string Describe(int width, int height)
+    public static string Key(int width, int height)
     {
         if (width <= 0 || height <= 0) return "-";
 
         var (w, h) = Reduce(width, height);
+        if (Names.TryGetValue((w, h), out var name)) return name;
+        if (w <= 100 && h <= 100) return $"{w}:{h}";
+
         var value = width / (double)height;
-
-        if (Names.TryGetValue((w, h), out var name))
-            return $"{name}（{value:0.###}）";
-
-        // 約分して 3 桁を超えると「129:52」のような読めない比になります。
-        // その場合は近い呼び名を探して「およそ」と書きます。
-        if (w > 100 || h > 100)
-        {
-            var nearest = Names
-                .Select(pair => (pair.Value, Difference: Math.Abs(pair.Key.W / (double)pair.Key.H - value)))
-                .OrderBy(pair => pair.Difference)
-                .First();
-            if (nearest.Difference < 0.02) return $"およそ {nearest.Value}（{value:0.###}）";
-            return $"{value:0.###}";
-        }
-
-        return $"{w}:{h}（{value:0.###}）";
+        var nearest = Names
+            .Select(pair => (pair.Value, Difference: Math.Abs(pair.Key.W / (double)pair.Key.H - value)))
+            .OrderBy(pair => pair.Difference)
+            .First();
+        return nearest.Difference < 0.03 ? $"およそ{nearest.Value}" : $"{value:0.###}";
     }
+
+    /// <summary>比べやすいよう、横長のものが大きくなる値を返します（並べ替え用）。</summary>
+    public static double Value(int width, int height) =>
+        width <= 0 || height <= 0 ? 0 : width / (double)height;
+
+    /// <summary>「16:9（1.778）」の形にします。</summary>
+    public static string Describe(int width, int height) =>
+        width <= 0 || height <= 0 ? "-" : $"{Key(width, height)}（{Value(width, height):0.###}）";
 }

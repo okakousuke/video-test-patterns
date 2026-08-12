@@ -60,6 +60,8 @@ public sealed class MainViewModel : ObservableObject
             ShowDashboard = false;
         });
         ShowDashboardCommand = new RelayCommand(OpenDashboard);
+        ToggleFullScreenCommand = new RelayCommand(() => IsFullScreen = !IsFullScreen, () => HasPreview);
+        ExitFullScreenCommand = new RelayCommand(() => IsFullScreen = false, () => IsFullScreen);
         ExpandAllCommand = new RelayCommand(() => SetAllGroupsExpanded(true));
         CollapseAllCommand = new RelayCommand(() => SetAllGroupsExpanded(false));
         _selectedImageFormat = ImageFormats[0];
@@ -87,6 +89,29 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public RelayCommand ShowDashboardCommand { get; }
+    public RelayCommand ToggleFullScreenCommand { get; }
+    public RelayCommand ExitFullScreenCommand { get; }
+
+    // --- プレビューの全画面 ---
+    //
+    // 一覧も条件欄もツールバーも畳んで、絵だけにします。
+    // 4K を等倍で見たいときや、パターン同士を並べて見比べたいときに、
+    // 周りの枠が要らなくなります。F11 と Esc で出入りします。
+
+    private bool _isFullScreen;
+    public bool IsFullScreen
+    {
+        get => _isFullScreen;
+        set
+        {
+            if (!Set(ref _isFullScreen, value)) return;
+            Raise(nameof(IsNotFullScreen));
+            ExitFullScreenCommand.RaiseCanExecuteChanged();
+            StatusText = value ? "全画面表示です。F11 か Esc で戻ります。" : "全画面表示を終了しました。";
+        }
+    }
+
+    public bool IsNotFullScreen => !_isFullScreen;
 
     /// <summary>最初の画面を出します。数え直しもここで走らせます。</summary>
     private void OpenDashboard()
@@ -938,6 +963,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         RefreshPatternFilters();
+        RefreshAspectFilters();
         RefreshSizeFilters();
         RebuildGroups();
 
@@ -1007,6 +1033,40 @@ public sealed class MainViewModel : ObservableObject
         Raise(nameof(PatternFilter));
     }
 
+    // 同じ比のものだけを並べたい場面があります（16:9 だけを見比べる、など）。
+    // サイズでの絞り込みは1つの解像度に決め打ちになるので、比のほうは別に持ちます。
+    public ObservableCollection<string> AspectFilters { get; } = ["すべて"];
+
+    private string _aspectFilter = "すべて";
+    public string AspectFilter
+    {
+        get => _aspectFilter;
+        set { if (Set(ref _aspectFilter, value)) RebuildGroups(); }
+    }
+
+    /// <summary>絞り込みに使う比の表記です。表示用の「16:9（1.778）」とは別に、短い形を使います。</summary>
+    private static string AspectKey(ManifestInfo manifest) =>
+        AspectRatio.Key(manifest.Width, manifest.Height);
+
+    private void RefreshAspectFilters()
+    {
+        var current = _aspectFilter;
+        AspectFilters.Clear();
+        AspectFilters.Add("すべて");
+
+        // 横長のものから並べます。文字の並びだと 11:9 と 16:9 の前後が読めません。
+        foreach (var key in _entries
+                     .Where(e => e.IsLoaded)
+                     .Select(e => (Key: AspectKey(e.Manifest!), Value: AspectRatio.Value(e.Manifest!.Width, e.Manifest!.Height)))
+                     .GroupBy(pair => pair.Key)
+                     .OrderByDescending(group => group.First().Value)
+                     .Select(group => group.Key))
+            AspectFilters.Add(key);
+
+        _aspectFilter = AspectFilters.Contains(current) ? current : "すべて";
+        Raise(nameof(AspectFilter));
+    }
+
     private void RefreshSizeFilters()
     {
         var current = _sizeFilter;
@@ -1055,9 +1115,11 @@ public sealed class MainViewModel : ObservableObject
         _colorModelFilter = ColorModelFilters[0];
         _sizeFilter = "すべて";
         _patternFilter = "すべて";
+        _aspectFilter = "すべて";
         Raise(nameof(ColorModelFilter));
         Raise(nameof(SizeFilter));
         Raise(nameof(PatternFilter));
+        Raise(nameof(AspectFilter));
         RebuildGroups();
         StatusText = "絞り込みを解除しました。";
     }
@@ -1136,7 +1198,8 @@ public sealed class MainViewModel : ObservableObject
             || ManifestInfo.Same(entry.Manifest.ColorModel, _colorModelFilter);
         var patternMatches = _patternFilter == "すべて"
             || string.Equals(entry.GroupName, _patternFilter, StringComparison.OrdinalIgnoreCase);
-        return colorMatches && patternMatches && MatchesSize(entry.Manifest);
+        var aspectMatches = _aspectFilter == "すべて" || AspectKey(entry.Manifest) == _aspectFilter;
+        return colorMatches && patternMatches && aspectMatches && MatchesSize(entry.Manifest);
     }
 
     private bool MatchesSize(ManifestInfo manifest)
@@ -1257,6 +1320,44 @@ public sealed class MainViewModel : ObservableObject
 
     // --- 保存 ---
 
+    /// <summary>
+    /// 表示条件を名前へ付け足す部分です。既定のままなら空です。
+    ///
+    /// 同じRAWから matrix 違い・成分違いの絵を何枚も出すので、
+    /// 名前が同じだと後から見分けが付きません。上書きも起きます。
+    /// 条件を変えたときだけ付けるので、既定で出したものは名前が伸びません。
+    /// </summary>
+    public string ViewSuffix
+    {
+        get
+        {
+            var parts = new List<string>();
+
+            if (IsInterpretationOverridden)
+            {
+                if (IsYcbcrSelected) parts.Add(_selectedMatrix);
+                parts.Add(_selectedRange);
+            }
+
+            if (_channels != ChannelMask.All)
+                parts.Add(_channels == ChannelMask.None ? "none" : ChannelNames(_channels).Replace(" + ", "").Replace("'", ""));
+
+            if (CurrentOptions.UseRawCodeGray) parts.Add("code");
+            if (_upsample == ChromaUpsample.Bilinear) parts.Add("bilinear");
+
+            return parts.Count == 0 ? "" : "_" + string.Join("-", parts);
+        }
+    }
+
+    /// <summary>保存するときの既定のファイル名（拡張子なし）です。</summary>
+    private string SuggestedBaseName()
+    {
+        var name = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview");
+        if (name.EndsWith(".manifest", StringComparison.OrdinalIgnoreCase))
+            name = name[..^".manifest".Length];
+        return name + ViewSuffix;
+    }
+
     private void SaveSelectedFormat()
     {
         if (_selectedImageFormat is { } format) SaveImage(format.Extension);
@@ -1278,9 +1379,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        var baseName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview");
-        if (baseName.EndsWith(".manifest", StringComparison.OrdinalIgnoreCase))
-            baseName = baseName[..^".manifest".Length];
+        var baseName = SuggestedBaseName();
 
         var saved = new List<string>();
         foreach (var format in ImageFormats)
@@ -1312,7 +1411,7 @@ public sealed class MainViewModel : ObservableObject
         var dialog = new SaveFileDialog
         {
             Filter = filter,
-            FileName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview") + "." + extension,
+            FileName = SuggestedBaseName() + "." + extension,
             InitialDirectory = _outputFolder ?? "",
         };
         if (dialog.ShowDialog() != true) return;

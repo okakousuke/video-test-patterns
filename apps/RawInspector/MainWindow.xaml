@@ -48,6 +48,8 @@
     <KeyBinding Modifiers="Control" Key="D5" Command="{Binding SaveImageCommand}" CommandParameter="gif" />
     <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenFolderCommand}" />
     <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
+    <KeyBinding Key="F11" Command="{Binding ToggleFullScreenCommand}" />
+    <KeyBinding Key="Escape" Command="{Binding ExitFullScreenCommand}" />
     <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ActualSizeCommand}" />
     <KeyBinding Modifiers="Control" Key="OemPlus" Command="NavigationCommands.IncreaseZoom" />
     <KeyBinding Modifiers="Control" Key="Add" Command="NavigationCommands.IncreaseZoom" />
@@ -59,7 +61,8 @@
 
     <!-- 上段: フォルダ操作。開くのは左端、出力先は右端へ寄せます。 -->
     <Border DockPanel.Dock="Top" Padding="8" Background="{StaticResource PanelBackground}"
-            BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1"
+            Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
       <DockPanel>
         <Button DockPanel.Dock="Left" Content="📁 フォルダを開く" Style="{StaticResource AccentButton}"
                 Command="{Binding OpenFolderCommand}"
@@ -127,6 +130,7 @@
     <Border DockPanel.Dock="Bottom" Padding="8,0" Height="40"
             Background="{StaticResource PanelBackground}"
             BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0"
+            Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}"
             ToolTip="コード値はRAWから読んだ生の値です（10bitなら0-1023のまま）。変換後はmatrixとrangeを適用して8bitへ丸めた値です。">
       <Grid VerticalAlignment="Center">
         <Grid.ColumnDefinitions>
@@ -204,8 +208,9 @@
         <ColumnDefinition x:Name="DetailColumn" Width="380" MinWidth="300" />
       </Grid.ColumnDefinitions>
 
-      <!-- 左: manifest一覧 -->
-      <DockPanel Grid.Column="0" Margin="8">
+      <!-- 左: manifest一覧。全画面のあいだは畳みます。 -->
+      <DockPanel Grid.Column="0" Margin="8"
+                 Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
         <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -247,16 +252,24 @@
                   ToolTip="絞り込みを解除して、すべて表示に戻します。" />
         </Grid>
 
-        <!-- パターンでの絞り込み。42種まで増えたので、名前で1つに絞れるようにします。 -->
+        <!-- パターンと画素数の比での絞り込み。
+             パターンは42種まで増えたので名前で1つに絞れるように。
+             比は「16:9 だけ見比べる」ような場面のためで、サイズ指定だと1解像度に決め打ちになります。 -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <TextBlock Grid.Column="0" Text="パターン" VerticalAlignment="Center" Margin="0,0,4,0" />
-          <ComboBox Grid.Column="1" Margin="0"
+          <ComboBox Grid.Column="1" Margin="0,0,8,0"
                     ItemsSource="{Binding PatternFilters}" SelectedItem="{Binding PatternFilter}"
                     ToolTip="パターン名で一覧を絞り込みます。並ぶのは、開いているフォルダに実際にあるものだけです。" />
+          <TextBlock Grid.Column="2" Text="比" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="3" Margin="0" MinWidth="76"
+                    ItemsSource="{Binding AspectFilters}" SelectedItem="{Binding AspectFilter}"
+                    ToolTip="画素数の比で絞り込みます（映したときの形ではありません）。横長のものから並びます。" />
         </Grid>
 
         <!-- 並び順。名前で並べると 1280x720 が 176x144 より前に来ます（文字として比べるため）。
@@ -332,7 +345,8 @@
       </DockPanel>
 
       <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
-                    Background="{StaticResource PanelBorder}" />
+                    Background="{StaticResource PanelBorder}"
+                    Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}" />
 
       <!-- 中央: プレビュー -->
       <DockPanel Grid.Column="2" Margin="8">
@@ -415,6 +429,8 @@
                                 IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
                                 IsEnabled="{Binding CanShowPixelGrid}"
                                 ToolTip="画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。600% 以上で使えます。" />
+                  <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
+                          ToolTip="一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"
                           ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
                 </StackPanel>
@@ -622,10 +638,12 @@
       </DockPanel>
 
       <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
-                    Background="{StaticResource PanelBorder}" />
+                    Background="{StaticResource PanelBorder}"
+                    Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}" />
 
-      <!-- 右: 生成条件とプレビューの作り方 -->
-      <DockPanel Grid.Column="4" Margin="8">
+      <!-- 右: 生成条件とプレビューの作り方。全画面のあいだは畳みます。 -->
+      <DockPanel Grid.Column="4" Margin="8"
+                 Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
 
         <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
           <Grid.ColumnDefinitions>
