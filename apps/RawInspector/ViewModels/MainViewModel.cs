@@ -849,7 +849,14 @@ public sealed class MainViewModel : ObservableObject
         if (loaded.Any(m => m.Width > 3840 || m.Height > 2160))
             SizeFilters.Add(OverFourKLabel);
 
-        foreach (var size in loaded.Select(m => $"{m.Width} x {m.Height}").Distinct().OrderBy(v => v))
+        // 実サイズは画素数の小さい順に並べます。文字として並べると 176x144 が
+        // 1280x720 より後ろへ行き、探すときに見当が付きません。
+        foreach (var size in loaded
+                     .Select(m => (m.Width, m.Height))
+                     .Distinct()
+                     .OrderBy(s => (long)s.Width * s.Height)
+                     .ThenBy(s => s.Width)
+                     .Select(s => ResolutionNames.Describe(s.Width, s.Height)))
             SizeFilters.Add(size);
 
         _sizeFilter = SizeFilters.Contains(current) ? current : "すべて";
@@ -963,7 +970,9 @@ public sealed class MainViewModel : ObservableObject
             if (_sizeFilter == label)
                 return manifest.Width <= width && manifest.Height <= height;
 
-        return _sizeFilter == $"{manifest.Width} x {manifest.Height}";
+        // 一覧に出している表記そのものと突き合わせます。片方だけ書式を変えると
+        // 選べるのに1件も出ない、という状態になります。
+        return _sizeFilter == ResolutionNames.Describe(manifest.Width, manifest.Height);
     }
 
     // --- 選択 ---

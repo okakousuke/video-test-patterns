@@ -30,7 +30,8 @@ public sealed class ManifestEntryViewModel : ObservableObject
 
     public string Label => Manifest is null
         ? $"[読み込み不可] {System.IO.Path.GetFileName(Path)}"
-        : $"{System.IO.Path.GetFileName(Manifest.Raw.Path)}  [{Manifest.ColorModel}, {Manifest.Storage}, {Manifest.BitDepth}bit, {Manifest.Width}x{Manifest.Height}]";
+        : $"{System.IO.Path.GetFileName(Manifest.Raw.Path)}  [{Manifest.ColorModel}, {Manifest.Storage}, {Manifest.BitDepth}bit, "
+          + $"{ResolutionNames.Describe(Manifest.Width, Manifest.Height)}]";
 
     public string ToolTip => Error ?? Path;
 
