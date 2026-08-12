@@ -70,6 +70,55 @@ def _gray(value: np.ndarray) -> RGB:
     return np.repeat(value.astype(np.float32)[:, :, None], 3, axis=2)
 
 
+# 数字の字形（5 x 7）。フォントを使うと環境で結果が変わるので、字形をコードに持ちます。
+# 同じ指定なら、どの機械で作っても 1 画素まで同じものが出ます。
+_DIGIT_ROWS: dict[str, tuple[str, ...]] = {
+    "0": (".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."),
+    "1": ("..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."),
+    "2": (".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"),
+    "3": ("#####", "...#.", "..#..", "...#.", "....#", "#...#", ".###."),
+    "4": ("...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."),
+    "5": ("#####", "#....", "####.", "....#", "....#", "#...#", ".###."),
+    "6": ("..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."),
+    "7": ("#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."),
+    "8": (".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."),
+    "9": (".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."),
+    " ": (".....", ".....", ".....", ".....", ".....", ".....", "....."),
+}
+
+_DIGIT_WIDTH = 5
+_DIGIT_HEIGHT = 7
+
+
+def _text_size(text: str, scale: int) -> tuple[int, int]:
+    """字形を scale 倍で置いたときの大きさ（幅, 高さ）を返す."""
+    if not text:
+        return 0, 0
+    # 字間は 1 桁ぶんの scale。詰めすぎると隣の数字とつながって読めなくなります。
+    return len(text) * (_DIGIT_WIDTH + 1) * scale - scale, _DIGIT_HEIGHT * scale
+
+
+def _draw_text(img: RGB, text: str, x: int, y: int, scale: int, value: float) -> None:
+    """(x, y) を左上として数字を書き込む（img を直接書き換える）."""
+    height, width = img.shape[:2]
+    cursor = x
+    for character in text:
+        rows = _DIGIT_ROWS.get(character)
+        if rows is None:
+            raise ValueError(f"字形を持っていない文字です: {character!r}")
+        for row_index, row in enumerate(rows):
+            for column_index, cell in enumerate(row):
+                if cell != "#":
+                    continue
+                x0 = cursor + column_index * scale
+                y0 = y + row_index * scale
+                # 画面からはみ出す桁は書かずに落とします（端でも例外にしません）
+                if x0 < 0 or y0 < 0 or x0 >= width or y0 >= height:
+                    continue
+                img[y0 : y0 + scale, x0 : x0 + scale, :] = np.float32(value)
+        cursor += (_DIGIT_WIDTH + 1) * scale
+
+
 # ---------------------------------------------------------------- パターン
 
 
@@ -1377,6 +1426,179 @@ def raster(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def monoscope(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """放送で使われてきた総合カードの系統を、部品から組み直したもの（この実装の自作構成）.
+
+    この系統のカードは、どれも同じ理由で同じ部品を持っています。
+    円は縦横比、格子は歪み、外周ブロックは切れ量、四隅の放射は周辺の解像、
+    中央の縞は解像限界です。特定のカードを写したのではなく、
+    「何を見たいか」から置き直しました。局名や記号のような識別のための表示は入れません。
+
+    縞に添える数字は**画面の高さぶんに何本入るか**（TV 本数）です。
+    周期 p 画素の縞なら 2 × 高さ ÷ p 本になります。
+    数字は狙った値ではなく、丸めたあとの**実際に描いた周期**から出しています。
+    狙いを書くと、丸めで 1 割ずれていても気付けません。
+
+    縞は 2 画素周期までです。それより細かい指定は落とします。
+    書けないものを書くと、絵のほうが先に折り返してしまうためです。
+
+    字形はコードに持っているので、フォントの有無で結果が変わりません。
+
+    ``blocks`` で外周ブロックの数、``grid`` で格子の間隔、``periods`` で縞の周期、
+    ``steps`` で階調帯の段数、``level`` で色帯の振幅を指定します。
+    """
+    background = float(_opt(options, "background", 0.5))
+    blocks = int(_opt(options, "blocks", 20))
+    grid_step = int(_opt(options, "grid", max(8, min(width, height) // 12)))
+    periods = [int(p) for p in _opt(options, "periods", [12, 8, 6, 4, 3, 2])]
+    steps = int(_opt(options, "steps", 9))
+    level = float(_opt(options, "level", 0.75))
+    if blocks < 2:
+        raise ValueError("monoscope の blocks は 2 以上にしてください")
+    if steps < 2:
+        raise ValueError("monoscope の steps は 2 以上にしてください")
+
+    # 2 画素を割る縞は、描いた時点で折り返します。指定されても落とします。
+    periods = [p for p in periods if p >= 2]
+    if not periods:
+        raise ValueError("monoscope の periods は 2 以上のものが 1 つ以上必要です")
+
+    img = _canvas(width, height, background)
+    xx, yy = _coords(width, height)
+    cx, cy = width / 2.0, height / 2.0
+    short = min(width, height)
+    thin = max(1, short // 400)
+    thickness = max(2, short // 22)  # 外周ブロックの太さ
+    # 円は外周ブロックの内側に収めます。ブロックに潜ると、切れ量を数える対象と
+    # 縦横比を見る対象が重なって、どちらも読みにくくなります。
+    radius = short / 2.0 - thickness - max(2, short // 60)
+
+    # --- 格子 ---
+    # 端ではなく中心を基準に刻みます。端起点だと左右で位相がずれ、
+    # 「中心から何マス目か」を数えられなくなります。
+    def lines_from_centre(coordinate: np.ndarray, centre: float) -> np.ndarray:
+        offset = np.mod(coordinate - centre + grid_step / 2.0, grid_step) - grid_step / 2.0
+        return np.abs(offset) < thin / 2.0 + 0.5
+
+    img[lines_from_centre(xx, cx) | lines_from_centre(yy, cy)] = np.float32(background * 1.5)
+
+    # --- 四隅の放射（周辺の解像。中央とは違うことがあります） ---
+    corner = int(short * 0.21)
+    if corner >= 16:
+        star = siemens(corner, corner, {"spokes": 24, "background": background})
+        # 外周ブロックの内側へ置きます。ブロックは最後に描くので、
+        # 重ねると放射の外周が上書きされて、一番粗い側から読めなくなります。
+        inset = thickness + max(2, short // 60)
+        for x0, y0 in (
+            (inset, inset),
+            (width - corner - inset, inset),
+            (inset, height - corner - inset),
+            (width - corner - inset, height - corner - inset),
+        ):
+            if x0 < 0 or y0 < 0 or x0 + corner > width or y0 + corner > height:
+                continue
+            img[y0 : y0 + corner, x0 : x0 + corner, :] = star
+
+    # --- 中央の円（縦横比。楕円なら崩れています） ---
+    distance = np.hypot(xx - cx, yy - cy)
+    edge = max(thin, short // 250)
+    img[np.abs(distance - radius) < edge] = np.float32(1.0)
+
+    def band(top: float, bottom: float) -> tuple[int, int, int, int] | None:
+        """円の内側に収まる帯の範囲を返す（収まらなければ None）."""
+        y0, y1 = int(cy + top * radius), int(cy + bottom * radius)
+        reach = max(abs(y0 - cy), abs(y1 - cy))
+        if reach >= radius:
+            return None
+        # その高さで円に収まる幅（弦）。少し内側へ寄せて、円の線に触れないようにします。
+        half = np.sqrt(radius**2 - reach**2) * 0.93
+        x0, x1 = int(cx - half), int(cx + half)
+        if x1 - x0 < 8 or y1 - y0 < 3:
+            return None
+        return max(0, x0), max(0, y0), min(width, x1), min(height, y1)
+
+    # 中心のまわりは空けておきます。十字と数字が重なると、どちらも読めなくなります。
+    arm = int(radius * 0.085)
+
+    # --- 上: 色帯（色順とチャンネルの入れ替わり） ---
+    area = band(-0.68, -0.44)
+    if area:
+        x0, y0, x1, y1 = area
+        colors = BAR_COLORS[:7] * level  # 黒を除いた 7 色
+        cuts = _edges(x1 - x0, 7)
+        for index in range(7):
+            img[y0:y1, x0 + cuts[index] : x0 + cuts[index + 1], :] = colors[index]
+
+    # --- 中上: 縞（解像限界）と、その本数 ---
+    area = band(-0.38, -0.20)
+    if area:
+        x0, y0, x1, y1 = area
+        label_height = max(7, int(short * 0.030))
+        scale = max(1, label_height // _DIGIT_HEIGHT)
+        label_top = y1 + max(2, short // 150)
+        # 中心の十字にかかるなら数字を小さくします。それでも入らなければ書きません。
+        while scale > 1 and label_top + _DIGIT_HEIGHT * scale > cy - arm:
+            scale -= 1
+        cuts = _edges(x1 - x0, len(periods))
+        gap = max(1, (x1 - x0) // (len(periods) * 12))
+        for index, period in enumerate(periods):
+            bx0 = x0 + cuts[index] + gap
+            bx1 = x0 + cuts[index + 1] - gap
+            if bx1 - bx0 < 2:
+                continue
+            # 区画の左端を起点にすると、どの区画も白から始まります。
+            offset = xx[y0:y1, bx0:bx1] - bx0
+            stripe = ((np.floor(offset) % period) < (period / 2)).astype(np.float32)
+            img[y0:y1, bx0:bx1, :] = stripe[:, :, None]
+
+            # 実際に描いた周期から本数を出します（狙いではなく結果を書きます）
+            text = str(round(2 * height / period))
+            text_width, text_rows = _text_size(text, scale)
+            if label_top + text_rows < cy - arm:
+                _draw_text(img, text, (bx0 + bx1) // 2 - text_width // 2, label_top, scale, 1.0)
+
+    # --- 中下: 白黒の細かい縦線と、細かい横線（走査方向の差） ---
+    area = band(0.12, 0.32)
+    if area:
+        x0, y0, x1, y1 = area
+        middle = (x0 + x1) // 2
+        vertical = ((np.floor(xx[y0:y1, x0:middle]) % 4) < 2).astype(np.float32)
+        img[y0:y1, x0:middle, :] = vertical[:, :, None]
+        horizontal = ((np.floor(yy[y0:y1, middle:x1]) % 4) < 2).astype(np.float32)
+        img[y0:y1, middle:x1, :] = horizontal[:, :, None]
+
+    # --- 下: 階調帯（黒つぶれ・白飛び） ---
+    area = band(0.44, 0.70)
+    if area:
+        x0, y0, x1, y1 = area
+        cuts = _edges(x1 - x0, steps)
+        for index in range(steps):
+            value = index / (steps - 1)
+            img[y0:y1, x0 + cuts[index] : x0 + cuts[index + 1], :] = np.float32(value)
+        # 地と同じ明るさの段は、囲わないと帯が途切れて見えます（段は正しくても読めません）。
+        outline = max(1, thin)
+        img[y0 - outline : y0, x0:x1, :] = np.float32(1.0)
+        img[y1 : y1 + outline, x0:x1, :] = np.float32(1.0)
+
+    # --- 中心の十字（中心のずれ） ---
+    cross = max(thin, short // 300)
+    img[int(cy) - cross : int(cy) + cross, int(cx) - arm : int(cx) + arm, :] = np.float32(1.0)
+    img[int(cy) - arm : int(cy) + arm, int(cx) - cross : int(cx) + cross, :] = np.float32(1.0)
+
+    # --- 外周ブロック（切れ量。端の何ブロックが欠けたかで読めます） ---
+    cuts = _edges(width, blocks)
+    for index in range(blocks):
+        value = np.float32(1.0 if index % 2 == 0 else 0.0)
+        img[:thickness, cuts[index] : cuts[index + 1], :] = value
+        img[height - thickness :, cuts[index] : cuts[index + 1], :] = value
+    rows = _edges(height, max(2, round(blocks * height / width)))
+    for index in range(len(rows) - 1):
+        value = np.float32(1.0 if index % 2 == 0 else 0.0)
+        img[rows[index] : rows[index + 1], :thickness, :] = value
+        img[rows[index] : rows[index + 1], width - thickness :, :] = value
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -1418,6 +1640,7 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "linepairs": linepairs,
     "slantedge": slantedge,
     "raster": raster,
+    "monoscope": monoscope,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)

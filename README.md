@@ -50,7 +50,7 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | 向きごとの解像限界 | `wedge`, `siemens`, `linepairs` |
 | 境目の立ち上がり（画素より細かく） | `slantedge` |
 | むら・純度・レベル（形の無い面で） | `raster` |
-| ひととおりまとめて | `testcard`, `geometrycard`, `resolutioncard` |
+| ひととおりまとめて | `testcard`, `geometrycard`, `resolutioncard`, `monoscope` |
 | 表示側の伝達特性（ガンマ） | `gamma` |
 | 成分ごと・色ごとの階調の偏り | `colorramp`, `colormatrix` |
 | 平滑化・圧縮の効き方 | `noise` |
@@ -102,6 +102,7 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `linepairs` | [linepairs.png](samples/patterns/linepairs.png) | 線幅ごとの縞。どの太さから潰れるかを段で確認 |
 | `slantedge` | [slantedge.png](samples/patterns/slantedge.png) | 傾けた境目。立ち上がりを画素より細かく確認 |
 | `raster` | [raster.png](samples/patterns/raster.png) | 一様な塗り。むら・純度・レベル確認 |
+| `monoscope` | [monoscope.png](samples/patterns/monoscope.png) | 放送系の総合カード。縞に本数（TV本数）を添えた自作構成 |
 
 この見本を再生成する場合は、リポジトリのルートで次を実行します。
 出力先は同梱物なので `samples/patterns/` です。
@@ -306,14 +307,14 @@ v210 の幅は6の倍数、mipi10 は各プレーンの幅が4の倍数、とい
 
 ```sh
 python tools/make_variant_raws.py                    # 3群すべて
-python tools/make_variant_raws.py --group smptebars  # 群を選ぶ
+python tools/make_variant_raws.py --group cards      # 群を選ぶ
 python tools/make_variant_raws.py --dry-run          # 何を作るかだけ表示
 ```
 
 | 群 | 何を振るか | 見たいこと |
 | --- | --- | --- |
 | `raster` | 塗りの色と振幅（15種）＋ 4:4:4 / 4:2:2 / 4:2:0 | むら・純度・レベル。あわせて「一様な面は間引いても変わらない」の確認 |
-| `smptebars` | 規格の解像度（QCIF〜4K UHD） | 幅・高さの端数（7等分の割り切れなさ、色差面の切り上げ）がサイズでどう出るか |
+| `cards` | `smptebars` と `monoscope` × 規格の解像度（QCIF〜4K UHD） | 幅・高さの端数（7等分の割り切れなさ、色差面の切り上げ）がサイズでどう出るか。`monoscope` は縞に添える本数が高さで決まるので、数字もサイズごとに変わります |
 | `resolution` | 解像系9パターン × 3サイズ × 3形式 | この種の絵は画素数で見え方が決まるので、1サイズでは足りない |
 
 `raster` 群には、同じ赤の塗りを 4:4:4 / 4:2:2 / 4:2:0 で出した3本が入ります。

@@ -14,10 +14,11 @@ raster
     細かい変化が無いので、この 3 本は同じ結果になるはずです。差が出たら、
     それは間引きの損失ではなく色変換かビット詰めの誤りです。
 
-smptebars
-    同じカラーバーを、規格の解像度ぶん並べます。形式は 1 つに固定してあるので、
-    違いはサイズだけです。幅や高さの端数（7 等分の割り切れなさ、色差面の切り上げ）が
-    サイズによってどう出るかを、横に並べて比べられます。
+cards
+    総合カード（カラーバー・放送系カード）を、規格の解像度ぶん並べます。
+    形式は 1 つに固定してあるので、違いはサイズだけです。幅や高さの端数
+    （7 等分の割り切れなさ、色差面の切り上げ）がサイズでどう出るかを横に並べて比べられます。
+    放送系カードは縞に添える本数がフレームの高さから決まるので、サイズごとに数字も変わります。
 
 resolution
     解像を見るパターンを、サイズと格納形式の両方で振ります。この種の絵は
@@ -28,7 +29,7 @@ resolution
 
 使い方:
     python tools/make_variant_raws.py                    # 3 群すべて
-    python tools/make_variant_raws.py --group smptebars  # 群を選ぶ
+    python tools/make_variant_raws.py --group cards      # 群を選ぶ
     python tools/make_variant_raws.py --out DIR
     python tools/make_variant_raws.py --dry-run          # 何を作るかだけ表示
 """
@@ -173,12 +174,17 @@ def raster_jobs(width: int, height: int) -> list[Job]:
     return jobs
 
 
-def smptebars_jobs(max_pixels: int) -> list[Job]:
+# サイズだけを振るカード。形式は 1 つに固定するので、違いはサイズだけになります。
+CARD_PATTERNS = ("smptebars", "monoscope")
+
+
+def cards_jobs(max_pixels: int) -> list[Job]:
     jobs: list[Job] = []
-    for _, width, height in STANDARD_SIZES:
-        if width * height > max_pixels or not fits(NV12, width, height):
-            continue
-        jobs.append((f"smptebars_{width}x{height}_{profile_tag(NV12)}", "smptebars", NV12, width, height, []))
+    for pattern in CARD_PATTERNS:
+        for _, width, height in STANDARD_SIZES:
+            if width * height > max_pixels or not fits(NV12, width, height):
+                continue
+            jobs.append((f"{pattern}_{width}x{height}_{profile_tag(NV12)}", pattern, NV12, width, height, []))
     return jobs
 
 
@@ -198,7 +204,7 @@ def resolution_jobs(max_pixels: int) -> list[Job]:
     return jobs
 
 
-GROUPS = ("raster", "smptebars", "resolution")
+GROUPS = ("raster", "cards", "resolution")
 
 
 def main() -> int:
@@ -219,8 +225,8 @@ def main() -> int:
     jobs: list[Job] = []
     if args.group in ("raster", "all"):
         jobs += raster_jobs(raster_width, raster_height)
-    if args.group in ("smptebars", "all"):
-        jobs += smptebars_jobs(args.max_pixels)
+    if args.group in ("cards", "all"):
+        jobs += cards_jobs(args.max_pixels)
     if args.group in ("resolution", "all"):
         jobs += resolution_jobs(args.max_pixels)
 

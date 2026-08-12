@@ -691,3 +691,111 @@ def test_raster_defaults_to_white():
 def test_raster_rejects_a_colour_that_is_not_three_values():
     with pytest.raises(ValueError):
         render("raster", 16, 16, {"color": [1.0, 0.0]})
+
+
+def test_text_size_counts_the_gaps_between_digits():
+    from vtp.patterns import _text_size
+    # 1 桁は 5 x 7、字間は 1 桁ぶんの scale
+    assert _text_size("7", 1) == (5, 7)
+    assert _text_size("77", 1) == (11, 7)
+    assert _text_size("77", 2) == (22, 14)
+    assert _text_size("", 3) == (0, 0)
+
+
+def test_draw_text_writes_the_glyph_from_the_table():
+    from vtp.patterns import _DIGIT_ROWS, _canvas, _draw_text
+    img = _canvas(12, 12, 0.0)
+    _draw_text(img, "1", 2, 3, 1, 1.0)
+    for row_index, row in enumerate(_DIGIT_ROWS["1"]):
+        for column_index, cell in enumerate(row):
+            assert img[3 + row_index, 2 + column_index, 0] == (1.0 if cell == "#" else 0.0)
+
+
+def test_draw_text_clips_at_the_edge_instead_of_failing():
+    from vtp.patterns import _canvas, _draw_text
+    img = _canvas(8, 8, 0.0)
+    _draw_text(img, "8", 6, 6, 2, 1.0)  # はみ出す位置
+    assert img.shape == (8, 8, 3)
+
+
+def test_draw_text_rejects_a_character_it_has_no_glyph_for():
+    from vtp.patterns import _canvas, _draw_text
+    with pytest.raises(ValueError):
+        _draw_text(_canvas(20, 20, 0.0), "A", 0, 0, 1, 1.0)
+
+
+def _contains_glyphs(img: np.ndarray, text: str) -> bool:
+    """字形どおりの並びが画像のどこかにあるかを探す."""
+    from vtp.patterns import _canvas, _draw_text, _text_size
+
+    for scale in (1, 2, 3, 4, 5):
+        w, h = _text_size(text, scale)
+        stamp = _canvas(w, h, 0.0)
+        _draw_text(stamp, text, 0, 0, scale, 1.0)
+        # 数字だけが 1.0 です。格子は 0.75、色帯は 0.75 なので、
+        # 「白そのもの」で拾えば周りに紛れません。
+        needle = stamp[:, :, 0] >= 1.0
+        field = img[:, :, 0] >= 1.0
+        rows, columns = field.shape
+        for y in range(rows - h + 1):
+            for x in range(columns - w + 1):
+                if np.array_equal(field[y : y + h, x : x + w], needle):
+                    return True
+    return False
+
+
+def test_monoscope_labels_the_line_count_it_actually_drew():
+    """数字が、狙いではなく実際の周期から出ていること."""
+    # 周期 2 の縞は「高さ x 2 / 2」= 高さぶんの本数になります
+    assert _contains_glyphs(render("monoscope", 800, 600, {"periods": [2]}), "600")
+    assert _contains_glyphs(render("monoscope", 640, 480, {"periods": [2]}), "480")
+    # 高さが変われば数字も変わる（480 の絵に 600 は出てこない）
+    assert not _contains_glyphs(render("monoscope", 640, 480, {"periods": [2]}), "600")
+
+
+def test_monoscope_drops_stripes_finer_than_two_pixels():
+    """2 画素を割る指定は落とすこと（描いた時点で折り返すため）."""
+    kept = render("monoscope", 400, 300, {"periods": [4, 1]})
+    only = render("monoscope", 400, 300, {"periods": [4]})
+    assert np.array_equal(kept, only)
+    with pytest.raises(ValueError):
+        render("monoscope", 400, 300, {"periods": [1]})
+
+
+def test_monoscope_border_is_alternating_blocks():
+    img = render("monoscope", 800, 600)[:, :, 0]
+    assert set(np.unique(img[1, :]).tolist()) == {0.0, 1.0}
+    assert set(np.unique(img[-2, :]).tolist()) == {0.0, 1.0}
+
+
+def test_monoscope_keeps_the_circle_clear_of_the_border():
+    """円が外周ブロックへ潜っていないこと."""
+    short = 600
+    thickness = max(2, short // 22)
+    radius = short / 2.0 - thickness - max(2, short // 60)
+    assert radius + thickness < short / 2.0
+
+    img = render("monoscope", 800, 600)[:, :, 0]
+    # 中心から真上へ半径ぶん進んだところに円の線がある
+    top = int(300 - radius)
+    assert img[top - 2 : top + 3, 400].max() == 1.0
+
+
+def test_monoscope_corner_stars_are_not_cut_by_the_border():
+    """四隅の放射が外周ブロックに削られていないこと."""
+    short = 600
+    thickness = max(2, short // 22)
+    inset = thickness + max(2, short // 60)
+    assert inset >= thickness
+
+    img = render("monoscope", 800, 600)[:, :, 0]
+    corner = int(short * 0.21)
+    star = img[inset : inset + corner, inset : inset + corner]
+    # 放射は白黒と、中心を塞いだ地の色だけでできています
+    assert set(np.unique(star).tolist()) <= {0.0, 0.5, 1.0}
+    assert star.min() == 0.0 and star.max() == 1.0
+
+
+def test_monoscope_is_repeatable():
+    """同じ指定なら 1 画素まで同じものが出ること（字形をコードに持つため）."""
+    assert np.array_equal(render("monoscope", 400, 300), render("monoscope", 400, 300))
