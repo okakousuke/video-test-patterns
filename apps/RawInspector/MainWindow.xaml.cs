@@ -45,6 +45,11 @@ public partial class MainWindow : Window
     {
         if (UserLayout.Load() is not { } layout) return;
 
+        // 並び順はウィンドウの位置とは関係がないので、位置の判定より先に戻します。
+        // 画面の外にある記録を捨てるとき、一緒に捨ててしまわないようにです。
+        if (layout.SortOrder is { } sort && _viewModel.SortOptions.Contains(sort))
+            _viewModel.SortOrder = sort;
+
         if (!layout.FitsInside(
                 SystemParameters.VirtualScreenLeft,
                 SystemParameters.VirtualScreenTop,
@@ -85,6 +90,7 @@ public partial class MainWindow : Window
             IsMaximized = WindowState == WindowState.Maximized,
             ListWidth = ListColumn.ActualWidth,
             DetailWidth = DetailColumn.ActualWidth,
+            SortOrder = _viewModel.SortOrder,
         }.Save();
     }
 

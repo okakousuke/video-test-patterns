@@ -234,6 +234,19 @@
                   ToolTip="絞り込みを解除して、すべて表示に戻します。" />
         </Grid>
 
+        <!-- 並び順。名前で並べると 1280x720 が 176x144 より前に来ます（文字として比べるため）。
+             同じパターンを解像度違いで並べたときに大小が読めないので、切り替えられるようにします。 -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="並び" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="1" Margin="0"
+                    ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SortOrder}"
+                    ToolTip="パターンごとの見出しの中の並び順です。解像度順は画素数で比べるので、1280x720 と 1600x900 のように幅だけでは決まらないものも正しく並びます。見出し（パターン名）自体は常に名前順です。" />
+        </Grid>
+
         <!-- 選択中のパターンが何のための絵かを出します。
              形だけ見ても目的は分からないので、見るべき場所まで書いておきます。 -->
         <Border DockPanel.Dock="Bottom" Margin="0,8,0,14" Padding="10,8" Height="200"

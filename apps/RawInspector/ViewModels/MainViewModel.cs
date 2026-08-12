@@ -773,7 +773,8 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>true のあいだ、RAWを開いても全体表示へ戻しません。</summary>
     private bool _keepScaleOnLoad;
 
-    private void LoadFolder(string folder, string? selectPath = null, double? keepScale = null)
+    /// <summary>フォルダを読み込みます（ダイアログを出さずに指定できるよう公開しています）。</summary>
+    public void LoadFolder(string folder, string? selectPath = null, double? keepScale = null)
     {
         _entries.Clear();
         ClearSelection();
@@ -878,10 +879,56 @@ public sealed class MainViewModel : ObservableObject
         StatusText = "絞り込みを解除しました。";
     }
 
+    // --- 並び順 ---
+    //
+    // 既定はファイル名です。ただし名前で並べると 1280x720 が 176x144 より前に来ます。
+    // 文字として比べているので「1」「1」「7」の順で決まってしまうためです。
+    // 同じパターンを解像度違いで並べたときは、これだと大小の見当が付きません。
+
+    public const string SortByName = "名前順";
+    public const string SortBySizeAscending = "解像度順（小さい順）";
+    public const string SortBySizeDescending = "解像度順（大きい順）";
+
+    public IReadOnlyList<string> SortOptions { get; } = [SortByName, SortBySizeAscending, SortBySizeDescending];
+
+    private string _sortOrder = SortByName;
+    public string SortOrder
+    {
+        get => _sortOrder;
+        set { if (Set(ref _sortOrder, value)) RebuildGroups(); }
+    }
+
+    /// <summary>
+    /// 解像度の大小は画素数で見ます。1280x720 と 1600x900 のように
+    /// 幅だけでは決まらない組み合わせがあるためです。
+    /// 画素数が同じものは幅・高さ・名前の順で決めて、並びが毎回変わらないようにします。
+    /// 読み込めなかったものは最後にまとめます（大きさが分からないので比べようがありません）。
+    /// </summary>
+    private static IOrderedEnumerable<ManifestEntryViewModel> SortEntries(
+        IEnumerable<ManifestEntryViewModel> entries, string order)
+    {
+        if (order == SortByName)
+            return entries.OrderBy(e => e.Label, StringComparer.OrdinalIgnoreCase);
+
+        var descending = order == SortBySizeDescending;
+        return entries
+            .OrderBy(e => e.Manifest is null)
+            .ThenBy(e => descending ? -Pixels(e) : Pixels(e))
+            .ThenBy(e => descending ? -(e.Manifest?.Width ?? 0) : e.Manifest?.Width ?? 0)
+            .ThenBy(e => descending ? -(e.Manifest?.Height ?? 0) : e.Manifest?.Height ?? 0)
+            .ThenBy(e => e.Label, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static long Pixels(ManifestEntryViewModel entry) =>
+        entry.Manifest is null ? 0 : (long)entry.Manifest.Width * entry.Manifest.Height;
+
     private void RebuildGroups()
     {
         Groups.Clear();
-        foreach (var entry in _entries.Where(Matches))
+
+        // 見出しはパターン名なので、並び順を変えても見出し自体は名前順のままにします。
+        // 見出しの位置まで動くと、探していたパターンを毎回追い直すことになります。
+        foreach (var entry in SortEntries(_entries.Where(Matches), _sortOrder))
         {
             var group = Groups.FirstOrDefault(g => string.Equals(g.Name, entry.GroupName, StringComparison.OrdinalIgnoreCase));
             if (group is null)
@@ -891,6 +938,10 @@ public sealed class MainViewModel : ObservableObject
             }
             group.Entries.Add(entry);
         }
+
+        var ordered = Groups.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        Groups.Clear();
+        foreach (var group in ordered) Groups.Add(group);
     }
 
     private bool Matches(ManifestEntryViewModel entry)

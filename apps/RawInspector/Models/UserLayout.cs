@@ -23,6 +23,9 @@ public sealed class UserLayout
     /// <summary>生成条件の欄の幅。0 のときは記録なしとして既定を使います。</summary>
     public double DetailWidth { get; set; }
 
+    /// <summary>一覧の並び順。null や知らない値のときは既定（名前順）に戻します。</summary>
+    public string? SortOrder { get; set; }
+
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "RawInspector", "layout.json");
