@@ -259,6 +259,238 @@ def blocks(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def smptebars(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """3 段構成のカラーバー（上段 75% バー、中段の反転バー、下段の黒レベル帯）.
+
+    放送で古くから使われている構成を、公開されている一般的な定義から自作しています。
+    上段だけのカラーバーと違い、1 枚で「色順」「青チャンネルの確認」「黒レベル」を
+    同時に見られます。下段左寄りには、黒より少し暗い/明るい帯を並べます。
+
+    ``level`` で上段の振幅（既定 0.75）、``pluge`` で下段の黒帯の振れ幅を指定します。
+    """
+    level = float(_opt(options, "level", 0.75))
+    pluge = float(_opt(options, "pluge", 0.04))
+
+    top_end = round(height * 2 / 3)
+    middle_end = round(height * 3 / 4)
+
+    img = _canvas(width, height)
+    edges = [round(i * width / 7) for i in range(8)]
+
+    # 上段: 白・黄・シアン・緑・マゼンタ・赤・青（黒を含めない 7 本）
+    top = np.array(
+        [(1, 1, 1), (1, 1, 0), (0, 1, 1), (0, 1, 0), (1, 0, 1), (1, 0, 0), (0, 0, 1)],
+        dtype=np.float32,
+    ) * level
+    for i in range(7):
+        img[:top_end, edges[i] : edges[i + 1], :] = top[i]
+
+    # 中段: 上段の色順を逆にした青系の帯。青チャンネルだけを見たときに
+    # 上段と中段が同じ明るさで並ぶかどうかで、青の再現を確認できます。
+    middle = np.array(
+        [(0, 0, 1), (0, 0, 0), (1, 0, 1), (0, 0, 0), (0, 1, 1), (0, 0, 0), (1, 1, 1)],
+        dtype=np.float32,
+    ) * level
+    for i in range(7):
+        img[top_end:middle_end, edges[i] : edges[i + 1], :] = middle[i]
+
+    # 下段: 黒・白の基準と、黒のすぐ上を刻んだ帯。
+    # 黒より暗い帯はこの段では作れません（出力が [0, 1] の正規化値のため）。
+    bottom = img[middle_end:, :, :]
+    bottom[:] = 0.0
+
+    seg = max(1, round(width / 6))
+    bottom[:, :seg, :] = np.float32(0.0)          # 基準の黒
+    bottom[:, seg : seg * 2, :] = np.float32(1.0)  # 基準の白
+    bottom[:, seg * 2 : seg * 3, :] = np.float32(0.0)
+
+    steps = 3
+    start = seg * 3
+    band = max(1, (width - start) // steps)
+    for index in range(steps):
+        x0 = start + index * band
+        x1 = start + (index + 1) * band if index < steps - 1 else width
+        bottom[:, x0:x1, :] = np.float32(index * pluge / (steps - 1))
+
+    return img
+
+
+def pluge(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """黒のすぐ上を細かく刻んだ帯（黒レベル合わせの確認用）.
+
+    黒地の上に、黒からわずかずつ明るい帯を並べます。左端は黒そのものなので必ず沈みます。
+    そこから右へ、何本目まで黒と区別できるかを見ます。黒が浮いていれば左端まで全部見え、
+    黒がつぶれていれば右のほうまで沈みます。白の基準を隣に置いて、
+    黒側だけの問題か表示全体の問題かを切り分けます。
+
+    ``delta`` は最も明るい帯の値（既定 0.06）、``bars`` は帯の本数（既定 6）です。
+
+    なお **黒より暗い帯はここでは作れません**。このモジュールの出力は [0, 1] に
+    正規化した値で、黒より下という概念を持たないためです。sub-black を扱うには、
+    コード値の段（``color_convert``）で limited range の下限より小さい値を置く必要があります。
+    """
+    delta = float(_opt(options, "delta", 0.06))
+    bars = int(_opt(options, "bars", 6))
+    if bars < 2:
+        raise ValueError("pluge の bars は 2 以上にしてください")
+
+    img = _canvas(width, height, 0.0)
+
+    band_height = max(1, height // 2)
+    y0 = (height - band_height) // 2
+
+    # 右端は白の基準にします。黒側の帯はその左へ並べます。
+    reference = max(1, width // 8)
+    reference_x = width - reference
+    img[y0 : y0 + band_height, reference_x:, :] = 1.0
+
+    usable = reference_x
+    step = max(1, usable // bars)
+    for index in range(bars):
+        x0 = index * step
+        x1 = (index + 1) * step if index < bars - 1 else usable
+        if x0 >= usable:
+            break
+        img[y0 : y0 + band_height, x0:x1, :] = np.float32(index * delta / (bars - 1))
+
+    return img
+
+
+def multiburst(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """周波数の異なる縦縞を横に並べた帯（解像度・周波数特性の確認用）.
+
+    左から右へ、縞の周期を細かくしていきます。どこまで縞が分離して見えるかで、
+    解像限界や低域通過の効きが分かります。縞の振幅が右へ行くほど落ちるなら、
+    その周波数で応答が下がっています。
+
+    ``periods`` に周期（画素）を並べます。既定は 16, 8, 4, 3, 2 です。
+    """
+    periods = _opt(options, "periods", [16, 8, 4, 3, 2])
+    periods = [int(p) for p in periods]
+    if any(p < 2 for p in periods):
+        raise ValueError("multiburst の periods は 2 以上にしてください")
+
+    img = _canvas(width, height, 0.5)
+    xx, _ = _coords(width, height)
+
+    # 先頭に白と黒の基準を置き、そのあとに縞の束を並べます。
+    lead = max(1, width // (len(periods) + 2))
+    img[:, :lead, :] = 1.0
+    img[:, lead : lead * 2, :] = 0.0
+
+    remaining = width - lead * 2
+    block = max(1, remaining // len(periods))
+    for index, period in enumerate(periods):
+        x0 = lead * 2 + index * block
+        x1 = x0 + block if index < len(periods) - 1 else width
+        if x0 >= width:
+            break
+        stripe = ((np.floor(xx[:, x0:x1]) % period) < (period / 2)).astype(np.float32)
+        img[:, x0:x1, :] = stripe[:, :, None]
+
+    return img
+
+
+def window(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """黒地の中央に置いた白い矩形（レベルと表示の追従の確認用）.
+
+    画面のうち白が占める割合を変えると、表示側の明るさ制御が働いて
+    白の明るさ自体が変わることがあります。``size`` で面積比を変えて比べます。
+
+    ``size`` は面積比（既定 0.25 = 画面の 1/4）、``level`` は矩形の明るさです。
+    """
+    size = float(_opt(options, "size", 0.25))
+    level = float(_opt(options, "level", 1.0))
+    if not 0.0 < size <= 1.0:
+        raise ValueError("window の size は 0 より大きく 1 以下にしてください")
+
+    img = _canvas(width, height, 0.0)
+    ratio = float(np.sqrt(size))
+    w = max(1, int(round(width * ratio)))
+    h = max(1, int(round(height * ratio)))
+    x0 = (width - w) // 2
+    y0 = (height - h) // 2
+    img[y0 : y0 + h, x0 : x0 + w, :] = np.float32(level)
+    return img
+
+
+def zoneplate(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """中心から外へ向かって細かくなる同心円の縞（折り返しの確認用）.
+
+    半径の二乗に比例して周期が細かくなるため、1 枚で低い周波数から高い周波数までを
+    連続して含みます。縮小やサブサンプリングで折り返し（エイリアス）が起きると、
+    細かいはずの場所に大きな渦や別の模様が現れます。格子や同心円より見つけやすい絵です。
+
+    ``max_frequency`` は、短辺の半径いっぱいの位置での縞の細かさ（cycles/pixel）です。
+    既定の 0.5 はちょうどナイキスト周波数で、**この生成器の出力自体は折り返しません**。
+    折り返しは、この絵を受け取った側が縮小や間引きをしたときに初めて現れます。
+    0.5 より大きくすると生成した時点で折り返すので、比較の基準には向きません。
+
+    四隅は短辺の半径より遠いため、既定でもナイキストを超えます。
+    中心からの円の内側だけを判断に使ってください。
+    """
+    max_frequency = float(_opt(options, "max_frequency", 0.5))
+    if max_frequency <= 0.0:
+        raise ValueError("zoneplate の max_frequency は 0 より大きくしてください")
+
+    xx, yy = _coords(width, height)
+    cx = width / 2.0
+    cy = height / 2.0
+    scale = min(width, height) / 2.0
+
+    # 位相 = π * a * r^2 とすると、半径 r での局所周波数は a * r になります。
+    # r = scale で max_frequency にしたいので a = max_frequency / scale です。
+    radius_squared = (xx - cx) ** 2 + (yy - cy) ** 2
+    phase = np.pi * (max_frequency / scale) * radius_squared
+    value = (0.5 + 0.5 * np.cos(phase)).astype(np.float32)
+    return np.repeat(value[:, :, None], 3, axis=2)
+
+
+def checker(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """白黒の市松模様（画素の抜け・反転・領域のずれの確認用）.
+
+    ``cols`` と ``rows`` でマスの数を決めます。マスを細かくするほど、
+    拡大縮小や圧縮での崩れが出やすくなります。
+    """
+    cols = int(_opt(options, "cols", 8))
+    rows = int(_opt(options, "rows", 8))
+    if cols < 1 or rows < 1:
+        raise ValueError("checker の cols / rows は 1 以上にしてください")
+
+    img = _canvas(width, height, 0.0)
+    xs = [round(i * width / cols) for i in range(cols + 1)]
+    ys = [round(i * height / rows) for i in range(rows + 1)]
+    for r in range(rows):
+        for c in range(cols):
+            if (r + c) % 2 == 0:
+                img[ys[r] : ys[r + 1], xs[c] : xs[c + 1], :] = 1.0
+    return img
+
+
+def pulsebar(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """細い縦線と幅の広い白帯を並べた絵（立ち上がりとにじみの確認用）.
+
+    細い線は急な変化、白帯はゆるやかな変化に相当します。線だけが鈍る、
+    帯の縁にだけ尾を引く、といった違いから、どの向きの変化が崩れているかを見ます。
+
+    ``pulse`` で細い線の幅（画素）、``bar`` で白帯の幅の比を指定します。
+    """
+    pulse_width = int(_opt(options, "pulse", max(1, width // 160)))
+    bar_ratio = float(_opt(options, "bar", 0.25))
+
+    img = _canvas(width, height, 0.0)
+
+    # 左寄りに細い線、右寄りに白帯を置きます。
+    pulse_x = round(width * 0.25)
+    img[:, pulse_x : pulse_x + max(1, pulse_width), :] = 1.0
+
+    bar_w = max(1, int(round(width * bar_ratio)))
+    bar_x = round(width * 0.55)
+    img[:, bar_x : min(width, bar_x + bar_w), :] = 1.0
+
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -272,6 +504,13 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "hatch": hatch,
     "dots": dots,
     "blocks": blocks,
+    "smptebars": smptebars,
+    "pluge": pluge,
+    "multiburst": multiburst,
+    "window": window,
+    "zoneplate": zoneplate,
+    "checker": checker,
+    "pulsebar": pulsebar,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)

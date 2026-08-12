@@ -1,4 +1,14 @@
-﻿# RawManifestViewer
+﻿# RawManifestViewer（凍結）
+
+> **このアプリはこの状態で凍結しました。** 後継は [`RawInspector`](../RawInspector/)（WPF）です。
+>
+> 追加する機能のうち、ピクセルプローブ・差分表示・ヒストグラム・hexダンプ・段階ビューは、いずれも独自描画とマウス操作を伴います。
+> Windows Formsのまま進めると、これらはすべて `OnPaint` の手書きと `Invalidate` の管理になり、
+> すでに1000行を超えている `MainForm.cs` が単一クラスのまま数千行へ育ちます。
+> そのため、UI基盤をWPFへ移し、データバインディングとXAMLで組み直すことにしました。
+>
+> **このフォルダは削除しません。** 「何を作り直したか」を後から比較できるようにするためです。
+> 不具合修正も行いません。手を入れる先は `RawInspector` です。
 
 `video-test-patterns` が生成したRAWデータを、マニフェストとセットで確認するためのWindows Formsアプリです。
 

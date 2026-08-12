@@ -1,6 +1,8 @@
 # manifest v1 共通仕様
 
-Python生成器とRawManifestViewerは、このファイルをRAWデータの共通契約として扱います。
+Python生成器と、`apps/` 配下のビューアは、このファイルをRAWデータの共通契約として扱います。
+
+現行のビューアは `apps/RawInspector`（WPF）です。`apps/RawManifestViewer`（Windows Forms）はこの契約に対応した状態で凍結してあり、新しい形式への追随は行いません。
 
 ## 基本原則
 
@@ -46,5 +48,6 @@ Python生成器とRawManifestViewerは、このファイルをRAWデータの共
 | 3 | YCbCr 8bit 4:2:2 packed（UYVY）/ NV12 | プレビュー対応 |
 | 4 | RGB / YCbCr 10bit planar、P010 | プレビュー対応 |
 | 5 | v210 / MIPI10 | プレビュー対応 |
+| 6 | YCbCr planar 4:2:2 / 4:2:0（I422 / I420）8bit・10bit | プレビュー対応 |
 
 新しい形式をPython側へ追加する場合は、生成、manifest記録、RAWサイズ検査、C#ビューアの対応可否表示を同じ変更単位で更新します。

@@ -1,0 +1,1059 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Microsoft.Win32;
+using RawInspector.Decoding;
+using RawInspector.Models;
+
+namespace RawInspector.ViewModels;
+
+public sealed class MainViewModel : ObservableObject
+{
+    private static readonly double[] ScaleSteps =
+        [10, 20, 25, 30, 40, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400];
+
+    private static readonly string LastFolderFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "RawInspector", "last-folder.txt");
+
+    private readonly List<ManifestEntryViewModel> _entries = [];
+
+    private RawImage? _rawImage;
+    private string? _currentManifestPath;
+    private string? _currentRawPath;
+
+    public MainViewModel()
+    {
+        OpenFolderCommand = new RelayCommand(OpenFolder);
+        SelectOutputFolderCommand = new RelayCommand(SelectOutputFolder);
+        OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
+        SaveImageCommand = new RelayCommand<string>(SaveImage, _ => HasPreview);
+        SaveRawCopyCommand = new RelayCommand(SaveRawCopy, () => _currentRawPath is not null);
+        ZoomInCommand = new RelayCommand(() => ScalePercent = NextStep(ScalePercent));
+        ZoomOutCommand = new RelayCommand(() => ScalePercent = PreviousStep(ScalePercent));
+        ActualSizeCommand = new RelayCommand(() => ScalePercent = 100);
+        CopySampleCommand = new RelayCommand<string>(CopySample, _ => HasSample);
+        SaveSelectedFormatCommand = new RelayCommand(SaveSelectedFormat, () => HasPreview);
+        SaveAllFormatsCommand = new RelayCommand(SaveAllFormats, () => HasPreview);
+        ResetFiltersCommand = new RelayCommand(ResetFilters);
+        ResetInterpretationCommand = new RelayCommand(ResetInterpretation, () => HasPreview);
+        ExpandAllCommand = new RelayCommand(() => SetAllGroupsExpanded(true));
+        CollapseAllCommand = new RelayCommand(() => SetAllGroupsExpanded(false));
+        _selectedImageFormat = ImageFormats[0];
+
+        ColorModelFilters = ["すべて", "RGB", "YUV / YCbCr"];
+        SizeFilters = ["すべて"];
+        _colorModelFilter = ColorModelFilters[0];
+        _sizeFilter = SizeFilters[0];
+    }
+
+    // --- コマンド ---
+
+    public RelayCommand OpenFolderCommand { get; }
+    public RelayCommand SelectOutputFolderCommand { get; }
+    public RelayCommand OpenOutputFolderCommand { get; }
+    public RelayCommand<string> SaveImageCommand { get; }
+    public RelayCommand SaveRawCopyCommand { get; }
+    public RelayCommand ZoomInCommand { get; }
+    public RelayCommand ZoomOutCommand { get; }
+    public RelayCommand ActualSizeCommand { get; }
+    public RelayCommand<string> CopySampleCommand { get; }
+    public RelayCommand SaveSelectedFormatCommand { get; }
+    public RelayCommand SaveAllFormatsCommand { get; }
+    public RelayCommand ResetFiltersCommand { get; }
+    public RelayCommand ResetInterpretationCommand { get; }
+    public RelayCommand ExpandAllCommand { get; }
+    public RelayCommand CollapseAllCommand { get; }
+
+    // --- プレビューの操作モード ---
+
+    /// <summary>
+    /// 矢印は通常のカーソル、手のひらはドラッグで移動、虫眼鏡はホイールだけで拡大縮小します
+    /// （PDFビューアと同じ考え方）。既定を矢印にしているのは、
+    /// ドラッグやホイールの意味が勝手に変わっていない状態から始めるためです。
+    /// </summary>
+    private PreviewTool _tool = PreviewTool.Arrow;
+    public PreviewTool Tool
+    {
+        get => _tool;
+        set
+        {
+            if (!Set(ref _tool, value)) return;
+            Raise(nameof(IsArrowTool));
+            Raise(nameof(IsHandTool));
+            Raise(nameof(IsZoomTool));
+        }
+    }
+
+    public bool IsArrowTool
+    {
+        get => _tool == PreviewTool.Arrow;
+        set { if (value) Tool = PreviewTool.Arrow; }
+    }
+
+    public bool IsHandTool
+    {
+        get => _tool == PreviewTool.Hand;
+        set { if (value) Tool = PreviewTool.Hand; }
+    }
+
+    public bool IsZoomTool
+    {
+        get => _tool == PreviewTool.Zoom;
+        set { if (value) Tool = PreviewTool.Zoom; }
+    }
+
+    // --- 圧縮画像の保存形式 ---
+
+    public IReadOnlyList<ImageFormatOption> ImageFormats { get; } =
+    [
+        new("PNG（可逆・既定）", "png"),
+        new("JPEG（非可逆）", "jpg"),
+        new("TIFF（可逆）", "tiff"),
+        new("BMP（無圧縮）", "bmp"),
+        new("GIF（256色）", "gif"),
+    ];
+
+    private ImageFormatOption? _selectedImageFormat;
+    public ImageFormatOption? SelectedImageFormat
+    {
+        get => _selectedImageFormat;
+        set => Set(ref _selectedImageFormat, value);
+    }
+
+    // --- 表示条件（manifestの値を初期値に、あとから変えられる） ---
+    //
+    // 「間違ったmatrixで見るとどう狂うか」「色差の戻し方で見え方がどう変わるか」を
+    // 同じRAWのまま出せるようにするための切り替えです。
+    // 変えるのは**読み方**だけで、RAWには一切触りません。
+
+    public IReadOnlyList<string> MatrixOptions { get; } = ["bt601", "bt709", "bt2020"];
+    public IReadOnlyList<string> RangeOptions { get; } = ["full", "limited"];
+
+    private string _selectedMatrix = "bt709";
+    public string SelectedMatrix
+    {
+        get => _selectedMatrix;
+        set { if (Set(ref _selectedMatrix, value)) Rerender(); }
+    }
+
+    private string _selectedRange = "full";
+    public string SelectedRange
+    {
+        get => _selectedRange;
+        set { if (Set(ref _selectedRange, value)) Rerender(); }
+    }
+
+    private ChannelView _channel = ChannelView.All;
+    public ChannelView Channel
+    {
+        get => _channel;
+        set
+        {
+            if (!Set(ref _channel, value)) return;
+            Raise(nameof(IsAllChannels));
+            Raise(nameof(IsFirstChannel));
+            Raise(nameof(IsSecondChannel));
+            Raise(nameof(IsThirdChannel));
+            Rerender();
+        }
+    }
+
+    public bool IsAllChannels { get => _channel == ChannelView.All; set { if (value) Channel = ChannelView.All; } }
+    public bool IsFirstChannel { get => _channel == ChannelView.First; set { if (value) Channel = ChannelView.First; } }
+    public bool IsSecondChannel { get => _channel == ChannelView.Second; set { if (value) Channel = ChannelView.Second; } }
+    public bool IsThirdChannel { get => _channel == ChannelView.Third; set { if (value) Channel = ChannelView.Third; } }
+
+    /// <summary>成分ボタンの表示名です。色モデルで呼び名が変わります。</summary>
+    private string _firstChannelLabel = "R";
+    public string FirstChannelLabel { get => _firstChannelLabel; private set => Set(ref _firstChannelLabel, value); }
+
+    private string _secondChannelLabel = "G";
+    public string SecondChannelLabel { get => _secondChannelLabel; private set => Set(ref _secondChannelLabel, value); }
+
+    private string _thirdChannelLabel = "B";
+    public string ThirdChannelLabel { get => _thirdChannelLabel; private set => Set(ref _thirdChannelLabel, value); }
+
+    private ChromaUpsample _upsample = ChromaUpsample.Nearest;
+    public ChromaUpsample Upsample
+    {
+        get => _upsample;
+        set
+        {
+            if (!Set(ref _upsample, value)) return;
+            Raise(nameof(IsNearestUpsample));
+            Raise(nameof(IsBilinearUpsample));
+            Rerender();
+        }
+    }
+
+    public bool IsNearestUpsample { get => _upsample == ChromaUpsample.Nearest; set { if (value) Upsample = ChromaUpsample.Nearest; } }
+    public bool IsBilinearUpsample { get => _upsample == ChromaUpsample.Bilinear; set { if (value) Upsample = ChromaUpsample.Bilinear; } }
+
+    /// <summary>Y'CbCr のときだけ matrix / range / 色差の戻し方が効きます。</summary>
+    private bool _isYcbcrSelected;
+    public bool IsYcbcrSelected { get => _isYcbcrSelected; private set => Set(ref _isYcbcrSelected, value); }
+
+    /// <summary>色差が間引かれている形式のときだけ、戻し方の切り替えに意味があります。</summary>
+    private bool _hasSubsampledChroma;
+    public bool HasSubsampledChroma { get => _hasSubsampledChroma; private set => Set(ref _hasSubsampledChroma, value); }
+
+    /// <summary>表示条件がmanifestの記録どおりかどうか。違うときは画面で警告します。</summary>
+    public bool IsInterpretationOverridden =>
+        _rawImage is not null && IsYcbcrSelected
+        && (!ManifestInfo.Same(_selectedMatrix, _rawImage.DefaultInterpretation.Matrix)
+            || !ManifestInfo.Same(_selectedRange, _rawImage.DefaultInterpretation.Range));
+
+    public string OverrideWarning => IsInterpretationOverridden
+        ? $"manifestの記録（{_rawImage!.DefaultInterpretation.Matrix} / {_rawImage.DefaultInterpretation.Range}）とは"
+          + $"違う条件で表示しています。この見え方はRAWの中身ではなく、読み方の違いによるものです。"
+        : "";
+
+    // --- プレビューの作り方 ---
+    //
+    // 画面に出ている絵はRAWそのものではありません。コード値を変換した結果です。
+    // どの条件でどう変換したのかを書いておかないと、
+    // 「RAWがこう見える」と読み違えます。
+
+    private string _previewRecipe = "";
+    public string PreviewRecipe { get => _previewRecipe; private set => Set(ref _previewRecipe, value); }
+
+    /// <summary>
+    /// どのRAWでも変わらない注意なので、作り方の説明ではなくステータスバーへ常時出します。
+    /// 毎回同じ文が説明の末尾にあると、その手前の「今回だけの条件」まで読み飛ばされます。
+    /// </summary>
+    public string BitDepthNote =>
+        "表示は常に8bit。10bitのRAWは画面で階調が落ちます（元の階調はコード値で確認）";
+
+    private void UpdatePreviewRecipe()
+    {
+        if (_rawImage is null || _currentManifest is null)
+        {
+            PreviewRecipe = "RAWを選ぶと、その絵をどう作っているかをここに出します。";
+            return;
+        }
+
+        var m = _currentManifest;
+        var lines = new List<string>
+        {
+            "画面に出ているのはRAWそのものではありません。",
+            "RAWのコード値を次の順で変換した結果を表示しています。",
+            "",
+            $"1. 格納形式 {m.Storage} から {(m.IsYcbcr ? "Y' / Cb / Cr" : "R / G / B")} のコード値を取り出す"
+            + $"（{m.BitDepth}bit: 0-{_rawImage.MaxCode}）",
+        };
+
+        var step = 2;
+
+        if (_rawImage.HasSubsampledChroma)
+        {
+            var how = _upsample == ChromaUpsample.Nearest
+                ? "最近傍（格納されている値をそのまま複製）"
+                : "バイリニア（隣り合うサンプルの間を線形補間）";
+            lines.Add($"{step++}. 間引かれた色差を輝度と同じ密度へ戻す（{m.Subsampling} / {how}）");
+        }
+
+        if (m.IsYcbcr)
+        {
+            var shift = 1 << (_rawImage.BitDepth - 8);
+            if (ManifestInfo.Same(_selectedRange, "limited"))
+            {
+                lines.Add($"{step++}. range=limited として正規化する");
+                lines.Add($"      Y  = (Y' - {16 * shift}) / {219 * shift}");
+                lines.Add($"      Cb = (Cb - {128 * shift}) / {224 * shift}");
+                lines.Add($"      Cr = (Cr - {128 * shift}) / {224 * shift}");
+            }
+            else
+            {
+                lines.Add($"{step++}. range=full として正規化する");
+                lines.Add($"      Y  = Y' / {_rawImage.MaxCode}");
+                lines.Add($"      Cb = (Cb - {128 * shift}) / {_rawImage.MaxCode}");
+                lines.Add($"      Cr = (Cr - {128 * shift}) / {_rawImage.MaxCode}");
+            }
+
+            var (kr, kb) = new ColorInterpretation(_selectedMatrix, _selectedRange).Coefficients;
+            var kg = 1.0 - kr - kb;
+            lines.Add($"{step++}. matrix={_selectedMatrix} でRGBへ戻す"
+                + $"（Kr={kr}, Kb={kb}, Kg={kg:0.####}）");
+            lines.Add("      R = Y + 2(1-Kr)・Cr");
+            lines.Add("      B = Y + 2(1-Kb)・Cb");
+            lines.Add("      G = (Y - Kr・R - Kb・B) / Kg");
+        }
+        else
+        {
+            lines.Add($"{step++}. コード値を 0-1 へ正規化する（値 / {_rawImage.MaxCode}）");
+        }
+
+        lines.Add($"{step++}. 0-1 に丸めてから 8bit（0-255）へ量子化し、画面へ出す");
+
+        if (_channel != ChannelView.All)
+        {
+            var label = _channel switch
+            {
+                ChannelView.First => FirstChannelLabel,
+                ChannelView.Second => SecondChannelLabel,
+                _ => ThirdChannelLabel,
+            };
+            lines.Add("");
+            lines.Add($"※ いまは成分「{label}」だけを表示しています。");
+            lines.Add("   色変換は通さず、そのコード値をそのまま濃淡にしています。");
+        }
+
+        if (IsInterpretationOverridden)
+        {
+            lines.Add("");
+            lines.Add($"※ matrix / range は manifest の記録"
+                + $"（{_rawImage.DefaultInterpretation.Matrix} / {_rawImage.DefaultInterpretation.Range}）"
+                + "とは違う値にしています。");
+        }
+
+        PreviewRecipe = string.Join("\n", lines);
+    }
+
+    private ManifestInfo? _currentManifest;
+
+    /// <summary>
+    /// RAWに記録されている主要な条件です。項目名と値を分けて持ちます。
+    /// 1本の文字列にすると、どこまでが項目名でどこからが値なのかが読み取れないためです。
+    /// </summary>
+    public ObservableCollection<SummaryItem> RawSummary { get; } = [];
+
+    private void BuildRawSummary(ManifestInfo manifest)
+    {
+        RawSummary.Clear();
+        RawSummary.Add(new SummaryItem("色モデル", manifest.ColorModel ?? "-"));
+        RawSummary.Add(new SummaryItem("色差サブサンプリング", manifest.Subsampling ?? "-"));
+        RawSummary.Add(new SummaryItem("ビット深度", $"{manifest.BitDepth}bit"));
+        RawSummary.Add(new SummaryItem("格納形式", manifest.Storage ?? "-"));
+        RawSummary.Add(new SummaryItem("画像サイズ", $"{manifest.Width} x {manifest.Height}"));
+    }
+
+    private PreviewRenderOptions CurrentOptions =>
+        new(new ColorInterpretation(_selectedMatrix, _selectedRange), _channel, _upsample);
+
+    /// <summary>表示条件を manifest の記録へ戻します。</summary>
+    private void ResetInterpretation()
+    {
+        if (_rawImage is null) return;
+        ApplyDefaultsFrom(_rawImage);
+        Rerender();
+        StatusText = "表示条件をmanifestの記録どおりに戻しました。";
+    }
+
+    private void ApplyDefaultsFrom(RawImage image)
+    {
+        var defaults = image.DefaultInterpretation;
+        _selectedMatrix = defaults.Matrix;
+        _selectedRange = defaults.Range;
+        _channel = ChannelView.All;
+        _upsample = ChromaUpsample.Nearest;
+
+        var (first, second, third) = image.ChannelLabels;
+        FirstChannelLabel = first;
+        SecondChannelLabel = second;
+        ThirdChannelLabel = third;
+        IsYcbcrSelected = image.ChannelLabels.First == "Y'";
+        HasSubsampledChroma = image.HasSubsampledChroma;
+
+        Raise(nameof(SelectedMatrix));
+        Raise(nameof(SelectedRange));
+        Raise(nameof(IsAllChannels));
+        Raise(nameof(IsFirstChannel));
+        Raise(nameof(IsSecondChannel));
+        Raise(nameof(IsThirdChannel));
+        Raise(nameof(IsNearestUpsample));
+        Raise(nameof(IsBilinearUpsample));
+    }
+
+    /// <summary>表示条件を変えたときに、同じRAWから絵を作り直します。</summary>
+    private void Rerender()
+    {
+        Raise(nameof(IsInterpretationOverridden));
+        Raise(nameof(OverrideWarning));
+        UpdatePreviewRecipe();
+
+        if (_rawImage is null) return;
+
+        var pixels = _rawImage.ToBgra32(CurrentOptions);
+        var bitmap = BitmapSource.Create(
+            _rawImage.Width, _rawImage.Height, 96, 96, PixelFormats.Bgra32, null, pixels, _rawImage.Width * 4);
+        bitmap.Freeze();
+
+        // 倍率とスクロール位置は保ったまま中身だけ差し替えます。
+        // 条件を切り替えて見比べるので、そのたびに全体表示へ戻ると比較になりません。
+        PreviewImage = bitmap;
+    }
+
+    // --- パターンの意図 ---
+
+    private PatternGuide _patternGuide = PatternGuide.For(null);
+    public PatternGuide PatternGuide { get => _patternGuide; private set => Set(ref _patternGuide, value); }
+
+    /// <summary>ビューへ「全体表示に戻したい」と伝えます（表示領域の大きさはビューしか知らないため）。</summary>
+    public event EventHandler? FitRequested;
+
+    public void RequestFit() => FitRequested?.Invoke(this, EventArgs.Empty);
+
+    // --- 一覧 ---
+
+    public ObservableCollection<PatternGroupViewModel> Groups { get; } = [];
+
+    public IReadOnlyList<string> ColorModelFilters { get; }
+
+    public ObservableCollection<string> SizeFilters { get; }
+
+    private string _colorModelFilter;
+    public string ColorModelFilter
+    {
+        get => _colorModelFilter;
+        set { if (Set(ref _colorModelFilter, value)) RebuildGroups(); }
+    }
+
+    private string _sizeFilter;
+    public string SizeFilter
+    {
+        get => _sizeFilter;
+        set { if (Set(ref _sizeFilter, value)) RebuildGroups(); }
+    }
+
+    private ManifestEntryViewModel? _selectedEntry;
+    public ManifestEntryViewModel? SelectedEntry
+    {
+        get => _selectedEntry;
+        set { if (Set(ref _selectedEntry, value)) LoadSelected(); }
+    }
+
+    // --- フォルダ ---
+
+    private string _folderText = "フォルダ未選択";
+    public string FolderText { get => _folderText; private set => Set(ref _folderText, value); }
+
+    private string? _outputFolder;
+    public string? OutputFolder
+    {
+        get => _outputFolder;
+        private set { if (Set(ref _outputFolder, value)) Raise(nameof(OutputFolderText)); }
+    }
+
+    public string OutputFolderText => _outputFolder is null ? "出力先: 未指定" : $"出力先: {_outputFolder}";
+
+    // --- 表示 ---
+
+    private string _patternBadge = "パターン名: 未選択";
+    public string PatternBadge { get => _patternBadge; private set => Set(ref _patternBadge, value); }
+
+    private string _previewTitle = "RAWファイルを選択してください";
+    public string PreviewTitle { get => _previewTitle; private set => Set(ref _previewTitle, value); }
+
+    private string _statusText = "「フォルダを開く」で、RAWとmanifestのあるフォルダを指定してください。";
+    public string StatusText { get => _statusText; private set => Set(ref _statusText, value); }
+
+    private BitmapSource? _previewImage;
+    public BitmapSource? PreviewImage
+    {
+        get => _previewImage;
+        private set
+        {
+            if (!Set(ref _previewImage, value)) return;
+            Raise(nameof(HasPreview));
+            Raise(nameof(PreviewPixelWidth));
+            Raise(nameof(PreviewPixelHeight));
+            Raise(nameof(ScaledWidth));
+            Raise(nameof(ScaledHeight));
+            SaveImageCommand.RaiseCanExecuteChanged();
+            SaveSelectedFormatCommand.RaiseCanExecuteChanged();
+            SaveAllFormatsCommand.RaiseCanExecuteChanged();
+            SaveRawCopyCommand.RaiseCanExecuteChanged();
+            ResetInterpretationCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public bool HasPreview => _previewImage is not null;
+
+    public int PreviewPixelWidth => _previewImage?.PixelWidth ?? 0;
+    public int PreviewPixelHeight => _previewImage?.PixelHeight ?? 0;
+
+    private string _unsupportedMessage = "";
+    public string UnsupportedMessage { get => _unsupportedMessage; private set => Set(ref _unsupportedMessage, value); }
+
+    // --- 倍率 ---
+
+    private double _scalePercent = 100;
+    public double ScalePercent
+    {
+        get => _scalePercent;
+        set
+        {
+            var clamped = Math.Clamp(Math.Round(value, 2), 10, 400);
+            if (!Set(ref _scalePercent, clamped)) return;
+            Raise(nameof(ScaledWidth));
+            Raise(nameof(ScaledHeight));
+            Raise(nameof(ScaleText));
+        }
+    }
+
+    public string ScaleText => $"{_scalePercent:0.#} %";
+
+    public double ScaledWidth => PreviewPixelWidth * _scalePercent / 100.0;
+    public double ScaledHeight => PreviewPixelHeight * _scalePercent / 100.0;
+
+    // --- ピクセルプローブ ---
+
+    // 表示は項目ごとに別のプロパティへ分けています。
+    // 1本の文字列にすると、カーソルを動かすたびに文字数が変わって桁位置や帯の高さが動き、
+    // その上のプレビュー枠までずれてしまうためです。
+    //
+    // Hover* と Sample* は役割が違います。
+    //   Hover*  … いまカーソルの下にある値。下のバーに出し、プレビューから外れたら消します。
+    //   Sample* … 最後に指した値。右クリックメニューに出し、外れても残します。
+    // 分けているのは、右クリックでメニューへマウスを移した瞬間に MouseLeave が飛ぶためです。
+    // 1組にすると、メニューを開いた瞬間に中身が全部「—」へ戻ってしまいます。
+
+    private const string Placeholder = "—";
+
+    private string _hoverPositionText = Placeholder;
+    public string HoverPositionText { get => _hoverPositionText; private set => Set(ref _hoverPositionText, value); }
+
+    private string _hoverCodeText = Placeholder;
+    public string HoverCodeText { get => _hoverCodeText; private set => Set(ref _hoverCodeText, value); }
+
+    private string _hoverCodeRangeText = "";
+    public string HoverCodeRangeText { get => _hoverCodeRangeText; private set => Set(ref _hoverCodeRangeText, value); }
+
+    private string _hoverHexText = Placeholder;
+    public string HoverHexText { get => _hoverHexText; private set => Set(ref _hoverHexText, value); }
+
+    private string _hoverRgbText = Placeholder;
+    public string HoverRgbText { get => _hoverRgbText; private set => Set(ref _hoverRgbText, value); }
+
+    private Brush _hoverSwatch = Brushes.Transparent;
+    public Brush HoverSwatch { get => _hoverSwatch; private set => Set(ref _hoverSwatch, value); }
+
+    private string _samplePositionText = Placeholder;
+    public string SamplePositionText { get => _samplePositionText; private set => Set(ref _samplePositionText, value); }
+
+    /// <summary>RAWから読んだ生のコード値です。変換していません。</summary>
+    private string _sampleCodeText = Placeholder;
+    public string SampleCodeText { get => _sampleCodeText; private set => Set(ref _sampleCodeText, value); }
+
+    /// <summary>matrixとrangeを適用し、8bitへ丸めた変換後の値です。</summary>
+    private string _sampleHexText = Placeholder;
+    public string SampleHexText { get => _sampleHexText; private set => Set(ref _sampleHexText, value); }
+
+    private string _sampleRgbText = Placeholder;
+    public string SampleRgbText { get => _sampleRgbText; private set => Set(ref _sampleRgbText, value); }
+
+    private string _sampleFullText = Placeholder;
+    public string SampleFullText { get => _sampleFullText; private set => Set(ref _sampleFullText, value); }
+
+    /// <summary>直近に指した画素です。右クリックからのコピーはこれを使います。</summary>
+    private PixelSample? _lastSample;
+
+    public bool HasSample => _lastSample is not null;
+
+    /// <summary>プレビュー上の画素を指したときに呼びます。</summary>
+    public void UpdateProbe(int x, int y)
+    {
+        if (_rawImage is null || x < 0 || y < 0 || x >= _rawImage.Width || y >= _rawImage.Height)
+        {
+            ClearHover();
+            return;
+        }
+
+        var sample = _rawImage.Sample(x, y, CurrentOptions);
+        _lastSample = sample;
+        Raise(nameof(HasSample));
+        CopySampleCommand.RaiseCanExecuteChanged();
+
+        HoverPositionText = sample.PositionText;
+        HoverCodeText = sample.CodeText;
+        HoverCodeRangeText = $"0-{sample.MaxCode}";
+        HoverHexText = sample.Hex;
+        HoverRgbText = sample.RgbText;
+        HoverSwatch = new SolidColorBrush(Color.FromRgb(sample.R, sample.G, sample.B));
+
+        SamplePositionText = sample.PositionText;
+        SampleCodeText = sample.CodeText;
+        SampleHexText = sample.Hex;
+        SampleRgbText = sample.RgbText;
+        SampleFullText = sample.FullText;
+    }
+
+    /// <summary>
+    /// カーソルがプレビューから外れたときに呼びます。下のバーの表示だけを消します。
+    /// Sample*（コピー対象）は残します。右クリックでメニューへマウスを移すとここへ来るためです。
+    /// </summary>
+    public void ClearHover()
+    {
+        HoverPositionText = Placeholder;
+        HoverCodeText = Placeholder;
+        HoverCodeRangeText = "";
+        HoverHexText = Placeholder;
+        HoverRgbText = Placeholder;
+        HoverSwatch = Brushes.Transparent;
+    }
+
+    /// <summary>
+    /// 直近の画素を忘れます。呼ぶのは別のmanifestを開いたときだけです。
+    /// </summary>
+    private void ForgetSample()
+    {
+        _lastSample = null;
+        SamplePositionText = Placeholder;
+        SampleCodeText = Placeholder;
+        SampleHexText = Placeholder;
+        SampleRgbText = Placeholder;
+        SampleFullText = Placeholder;
+        ClearHover();
+        Raise(nameof(HasSample));
+        CopySampleCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// 直近に指した画素の値をクリップボードへ入れます。
+    /// 見て確かめた値をそのまま記事やテストコードへ持っていけるようにするためです。
+    /// </summary>
+    private void CopySample(string kind)
+    {
+        if (_lastSample is not { } s) return;
+
+        // 文字列の組み立ては PixelSample 側に置いてあります。
+        // WPFに依存しないので、コピーされる中身をそのまま検証できます。
+        var text = kind switch
+        {
+            "hex" => s.Hex,
+            "rgb" => s.RgbText,
+            "code" => s.CodeText,
+            "xy" => s.PositionText,
+            _ => s.FullText,
+        };
+
+        try
+        {
+            Clipboard.SetText(text);
+            StatusText = $"コピーしました: {text}";
+        }
+        catch (Exception ex)
+        {
+            // 他のアプリがクリップボードを掴んでいると失敗することがあります。
+            StatusText = $"クリップボードへコピーできませんでした: {ex.Message}";
+        }
+    }
+
+    // --- パラメータ ---
+
+    public ObservableCollection<ParameterRow> Parameters { get; } = [];
+
+    private ParameterRow? _selectedParameter;
+    public ParameterRow? SelectedParameter
+    {
+        get => _selectedParameter;
+        set { if (Set(ref _selectedParameter, value)) Raise(nameof(ParameterHelp)); }
+    }
+
+    public string ParameterHelp => _selectedParameter?.Help
+        ?? "項目を選ぶと、RAWの解釈にその値がどう効くかを表示します。";
+
+    // --- 起動時 ---
+
+    public void RestoreLastFolder()
+    {
+        try
+        {
+            if (!File.Exists(LastFolderFile)) return;
+            var folder = File.ReadAllText(LastFolderFile).Trim();
+            if (Directory.Exists(folder)) LoadFolder(folder);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"前回のフォルダを復元できませんでした: {ex.Message}";
+        }
+    }
+
+    private void OpenFolder()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "RAWとmanifestのあるフォルダを選んでください",
+            InitialDirectory = _outputFolder ?? "",
+        };
+        if (dialog.ShowDialog() != true) return;
+        LoadFolder(dialog.FolderName);
+    }
+
+    private void LoadFolder(string folder)
+    {
+        _entries.Clear();
+        ClearSelection();
+        FolderText = folder;
+
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(folder, "*.manifest.json", SearchOption.AllDirectories))
+                _entries.Add(ManifestEntryViewModel.Load(path));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"フォルダを読み込めませんでした: {ex.Message}";
+            return;
+        }
+
+        RefreshSizeFilters();
+        RebuildGroups();
+
+        OutputFolder ??= folder;
+        SaveLastFolder(folder);
+
+        // 空のキャンバスのまま止まらないよう、プレビューできるものを1件だけ開いておきます。
+        var first = _entries.FirstOrDefault(e => e.SupportsPreview) ?? _entries.FirstOrDefault();
+        if (first is not null) first.IsSelected = true;
+
+        var broken = _entries.Count(e => !e.IsLoaded);
+        StatusText = broken == 0
+            ? $"manifest {_entries.Count} 件を読み込みました。一覧から選ぶとプレビューします。"
+            : $"manifest {_entries.Count} 件（うち読み込み不可 {broken} 件）。読み込み不可のものも一覧に残しています。";
+    }
+
+    // 画素数の粗い区分。フォルダに数十件あると実サイズだけの一覧は選びにくいので、
+    // 先に「だいたいこのくらい」で絞れるようにします。判定は幅と高さの両方で行います。
+    private static readonly (string Label, int Width, int Height)[] SizeBuckets =
+    [
+        ("〜HD (1280×720 以下)", 1280, 720),
+        ("〜FHD (1920×1080 以下)", 1920, 1080),
+        ("〜4K (3840×2160 以下)", 3840, 2160),
+    ];
+
+    private const string OverFourKLabel = "4K 超";
+
+    private void RefreshSizeFilters()
+    {
+        var current = _sizeFilter;
+        var loaded = _entries.Where(e => e.IsLoaded).Select(e => e.Manifest!).ToArray();
+
+        SizeFilters.Clear();
+        SizeFilters.Add("すべて");
+
+        // 該当するものが1件も無い区分は出しません。選べない項目が並ぶと探しにくくなるためです。
+        foreach (var (label, width, height) in SizeBuckets)
+            if (loaded.Any(m => m.Width <= width && m.Height <= height))
+                SizeFilters.Add(label);
+
+        if (loaded.Any(m => m.Width > 3840 || m.Height > 2160))
+            SizeFilters.Add(OverFourKLabel);
+
+        foreach (var size in loaded.Select(m => $"{m.Width} x {m.Height}").Distinct().OrderBy(v => v))
+            SizeFilters.Add(size);
+
+        _sizeFilter = SizeFilters.Contains(current) ? current : "すべて";
+        Raise(nameof(SizeFilter));
+    }
+
+    // パターンが増えると一覧が縦に伸びるので、まとめて開閉できるようにします。
+    // 絞り込みを変えると見出しを作り直すため、直前の開閉をここで覚えて引き継ぎます。
+    // 覚えていないと、閉じたつもりが絞り込みのたびに開き直ります。
+    private bool _groupsExpanded = true;
+
+    private void SetAllGroupsExpanded(bool expanded)
+    {
+        _groupsExpanded = expanded;
+        foreach (var group in Groups) group.IsExpanded = expanded;
+        StatusText = expanded ? "すべて展開しました。" : "すべて閉じました。";
+    }
+
+    /// <summary>絞り込みを初期状態へ戻します。絞ったまま「件数が合わない」と悩まないためです。</summary>
+    private void ResetFilters()
+    {
+        _colorModelFilter = ColorModelFilters[0];
+        _sizeFilter = "すべて";
+        Raise(nameof(ColorModelFilter));
+        Raise(nameof(SizeFilter));
+        RebuildGroups();
+        StatusText = "絞り込みを解除しました。";
+    }
+
+    private void RebuildGroups()
+    {
+        Groups.Clear();
+        foreach (var entry in _entries.Where(Matches))
+        {
+            var group = Groups.FirstOrDefault(g => string.Equals(g.Name, entry.GroupName, StringComparison.OrdinalIgnoreCase));
+            if (group is null)
+            {
+                group = new PatternGroupViewModel { Name = entry.GroupName, IsExpanded = _groupsExpanded };
+                Groups.Add(group);
+            }
+            group.Entries.Add(entry);
+        }
+    }
+
+    private bool Matches(ManifestEntryViewModel entry)
+    {
+        if (entry.Manifest is null) return _colorModelFilter == "すべて" && _sizeFilter == "すべて";
+
+        var colorMatches = _colorModelFilter == "すべて"
+            || (_colorModelFilter == "YUV / YCbCr" && entry.Manifest.IsYcbcr)
+            || ManifestInfo.Same(entry.Manifest.ColorModel, _colorModelFilter);
+        return colorMatches && MatchesSize(entry.Manifest);
+    }
+
+    private bool MatchesSize(ManifestInfo manifest)
+    {
+        if (_sizeFilter == "すべて") return true;
+        if (_sizeFilter == OverFourKLabel) return manifest.Width > 3840 || manifest.Height > 2160;
+
+        foreach (var (label, width, height) in SizeBuckets)
+            if (_sizeFilter == label)
+                return manifest.Width <= width && manifest.Height <= height;
+
+        return _sizeFilter == $"{manifest.Width} x {manifest.Height}";
+    }
+
+    // --- 選択 ---
+
+    private void ClearSelection()
+    {
+        Groups.Clear();
+        Parameters.Clear();
+        SelectedParameter = null;
+        PreviewImage = null;
+        _rawImage = null;
+        _currentManifestPath = null;
+        _currentRawPath = null;
+        UnsupportedMessage = "";
+        _currentManifest = null;
+        RawSummary.Clear();
+        UpdatePreviewRecipe();
+        PatternGuide = PatternGuide.For(null);
+        PatternBadge = "パターン名: 未選択";
+        PreviewTitle = "RAWファイルを選択してください";
+        ForgetSample();
+    }
+
+    private void LoadSelected()
+    {
+        var entry = _selectedEntry;
+        if (entry is null) return;
+
+        _currentManifestPath = entry.Path;
+        _currentManifest = null;
+        RawSummary.Clear();
+        Parameters.Clear();
+        SelectedParameter = null;
+        PreviewImage = null;
+        _rawImage = null;
+        _currentRawPath = null;
+        UnsupportedMessage = "";
+        ForgetSample();
+
+        if (entry.Manifest is null)
+        {
+            PatternBadge = "パターン名: 読み込み不可";
+            PreviewTitle = Path.GetFileName(entry.Path);
+            UnsupportedMessage = $"manifestを読み込めませんでした。\n\n{entry.Error}";
+            StatusText = $"読み込み不可: {entry.Error}";
+            SaveRawCopyCommand.RaiseCanExecuteChanged();
+            return;
+        }
+
+        var manifest = entry.Manifest;
+        _currentManifest = manifest;
+        BuildRawSummary(manifest);
+        foreach (var row in ParameterRow.Build(manifest, entry.Path)) Parameters.Add(row);
+        PatternGuide = PatternGuide.For(manifest.Pattern);
+        PatternBadge = "パターン名: " + (manifest.Pattern ?? "未指定");
+        PreviewTitle = FormatPrimaryParameters(manifest);
+
+        if (!manifest.SupportsPreview)
+        {
+            UnsupportedMessage = manifest.UnsupportedReason;
+            StatusText = $"読み込み済み（プレビュー未対応）: {manifest.ColorModel}, {manifest.BitDepth}bit, {manifest.Storage}";
+            SaveRawCopyCommand.RaiseCanExecuteChanged();
+            return;
+        }
+
+        try
+        {
+            var rawPath = manifest.ResolveRawPath(entry.Path);
+            var image = RawImage.Load(rawPath, manifest);
+
+            _rawImage = image;
+            _currentRawPath = rawPath;
+
+            // 別のRAWを開いたら、表示条件はmanifestの記録へ戻します。
+            // 前のファイルで変えた条件が残っていると、条件を変えたことを忘れて読み違えます。
+            ApplyDefaultsFrom(image);
+
+            var pixels = image.ToBgra32(CurrentOptions);
+            var bitmap = BitmapSource.Create(
+                image.Width, image.Height, 96, 96, PixelFormats.Bgra32, null, pixels, image.Width * 4);
+            bitmap.Freeze();
+
+            PreviewImage = bitmap;
+            Raise(nameof(IsInterpretationOverridden));
+            Raise(nameof(OverrideWarning));
+            UpdatePreviewRecipe();
+            StatusText = "読み込みました。";
+            RequestFit();
+        }
+        catch (Exception ex)
+        {
+            UnsupportedMessage = $"RAWを読み込めませんでした。\n\n{ex.Message}";
+            StatusText = $"RAW読み込みエラー: {ex.Message}";
+        }
+
+        SaveRawCopyCommand.RaiseCanExecuteChanged();
+    }
+
+    private static string FormatPrimaryParameters(ManifestInfo manifest) =>
+        $"色モデル: {manifest.ColorModel} / 色差サブサンプリング: {manifest.Subsampling} / "
+        + $"ビット深度: {manifest.BitDepth}bit / 格納形式: {manifest.Storage} / 画像サイズ: {manifest.Width} x {manifest.Height}";
+
+    // --- 保存 ---
+
+    private void SaveSelectedFormat()
+    {
+        if (_selectedImageFormat is { } format) SaveImage(format.Extension);
+    }
+
+    /// <summary>
+    /// 対応する全形式を、出力先フォルダへ一度に書き出します。
+    /// 形式ごとの見え方（JPEGの劣化、GIFの減色）を並べて比べるとき用なので、
+    /// 保存ダイアログは出さずにまとめて出します。
+    /// </summary>
+    private void SaveAllFormats()
+    {
+        if (_previewImage is null) return;
+
+        var folder = _outputFolder;
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+        {
+            StatusText = "出力先フォルダが未指定です。「出力先...」で指定してください。";
+            return;
+        }
+
+        var baseName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview");
+        if (baseName.EndsWith(".manifest", StringComparison.OrdinalIgnoreCase))
+            baseName = baseName[..^".manifest".Length];
+
+        var saved = new List<string>();
+        foreach (var format in ImageFormats)
+        {
+            var path = Path.Combine(folder, $"{baseName}.{format.Extension}");
+            try
+            {
+                var (encoder, _) = EncoderFor(format.Extension);
+                encoder.Frames.Add(BitmapFrame.Create(_previewImage));
+                using var stream = File.Create(path);
+                encoder.Save(stream);
+                saved.Add(format.Extension);
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"{format.Extension} の保存に失敗しました: {ex.Message}";
+                return;
+            }
+        }
+
+        StatusText = $"{saved.Count} 形式を保存しました（{string.Join(" / ", saved)}）: {folder}";
+    }
+
+    private void SaveImage(string extension)
+    {
+        if (_previewImage is null) return;
+
+        var (encoder, filter) = EncoderFor(extension);
+        var dialog = new SaveFileDialog
+        {
+            Filter = filter,
+            FileName = Path.GetFileNameWithoutExtension(_currentManifestPath ?? "preview") + "." + extension,
+            InitialDirectory = _outputFolder ?? "",
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            encoder.Frames.Add(BitmapFrame.Create(_previewImage));
+            using var stream = File.Create(dialog.FileName);
+            encoder.Save(stream);
+            OutputFolder = Path.GetDirectoryName(dialog.FileName) ?? _outputFolder;
+            StatusText = $"保存しました: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"保存に失敗しました: {ex.Message}";
+        }
+    }
+
+    private static (BitmapEncoder Encoder, string Filter) EncoderFor(string extension) => extension switch
+    {
+        "png" => (new PngBitmapEncoder(), "PNG画像 (*.png)|*.png"),
+        "jpg" => (new JpegBitmapEncoder(), "JPEG画像 (*.jpg)|*.jpg"),
+        "tiff" => (new TiffBitmapEncoder(), "TIFF画像 (*.tiff)|*.tiff"),
+        "bmp" => (new BmpBitmapEncoder(), "BMP画像 (*.bmp)|*.bmp"),
+        "gif" => (new GifBitmapEncoder(), "GIF画像 (*.gif)|*.gif"),
+        _ => (new PngBitmapEncoder(), "PNG画像 (*.png)|*.png"),
+    };
+
+    private void SaveRawCopy()
+    {
+        if (_currentRawPath is null) return;
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "RAWデータ (*.raw)|*.raw|すべてのファイル (*.*)|*.*",
+            FileName = Path.GetFileName(_currentRawPath),
+            InitialDirectory = _outputFolder ?? "",
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            File.Copy(_currentRawPath, dialog.FileName, overwrite: true);
+            OutputFolder = Path.GetDirectoryName(dialog.FileName) ?? _outputFolder;
+            StatusText = $"RAWをコピーしました: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"RAWのコピーに失敗しました: {ex.Message}";
+        }
+    }
+
+    private void SelectOutputFolder()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "保存先のフォルダを選んでください",
+            InitialDirectory = _outputFolder ?? "",
+        };
+        if (dialog.ShowDialog() != true) return;
+        OutputFolder = dialog.FolderName;
+    }
+
+    private void OpenOutputFolder()
+    {
+        if (_outputFolder is null || !Directory.Exists(_outputFolder)) return;
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_outputFolder}\"") { UseShellExecute = true });
+    }
+
+    private static void SaveLastFolder(string folder)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LastFolderFile)!);
+            File.WriteAllText(LastFolderFile, folder);
+        }
+        catch
+        {
+            // 次回起動時の利便のための保存なので、失敗しても操作は続行します。
+        }
+    }
+
+    private static double NextStep(double current) =>
+        ScaleSteps.FirstOrDefault(step => step > current + 0.001, ScaleSteps[^1]);
+
+    private static double PreviousStep(double current) =>
+        ScaleSteps.LastOrDefault(step => step < current - 0.001, ScaleSteps[0]);
+}

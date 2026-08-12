@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>RawInspector</RootNamespace>
+    <AssemblyName>RawInspector</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- 図案は tools/make_icon.py で生成しています（外部素材は使っていません）。 -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- exeのアイコンとは別に、ウィンドウとタスクバーで使うため埋め込みます。 -->
+    <Resource Include="app.ico" />
+    <!-- 虫眼鏡カーソル。tools/make_cursor.py で生成しています。 -->
+    <Resource Include="zoom.cur" />
+  </ItemGroup>
+</Project>

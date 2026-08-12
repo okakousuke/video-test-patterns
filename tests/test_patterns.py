@@ -110,3 +110,133 @@ def test_blocks_markers_differ_between_tiles():
 def test_unknown_pattern_raises():
     with pytest.raises(ValueError):
         render("nosuch", 8, 8)
+
+
+# --- 追加パターン（放送・表示の確認でよく使われる形） ---
+
+
+def test_smptebars_has_three_bands():
+    """上段・中段・下段で並びが変わること（1 枚で別々の確認ができる）."""
+    img = render("smptebars", 210, 300)[:, :, 0]
+    top = img[10, :]
+    middle = img[210, :]
+    bottom = img[290, :]
+    assert not np.array_equal(top, middle)
+    assert not np.array_equal(middle, bottom)
+
+
+def test_smptebars_top_starts_with_white_and_ends_with_blue():
+    """上段の色順が崩れていないこと（R と B が入れ替わると並びが変わる）."""
+    img = render("smptebars", 700, 300, {"level": 1.0})
+    top = img[10]
+    assert tuple(top[10]) == (1.0, 1.0, 1.0)     # 白
+    assert tuple(top[-10]) == (0.0, 0.0, 1.0)    # 青
+
+
+def test_pluge_steps_upward_from_black():
+    """左端は黒そのもので、右へ行くほど明るくなること."""
+    img = render("pluge", 240, 60, {"bars": 6, "delta": 0.06})[:, :, 0]
+    row = img[30]
+    # 白の基準を除いた範囲で、値が単調に増えること
+    values = sorted(set(float(v) for v in row if v < 0.5))
+    assert values[0] == 0.0
+    assert values == sorted(values)
+    assert abs(values[-1] - 0.06) < 1e-6
+
+
+def test_pluge_cannot_express_sub_black():
+    """黒より暗い帯は作れない（このモジュールの出力は [0, 1] のため）."""
+    img = render("pluge", 64, 32)
+    assert img.min() == 0.0
+
+
+def test_multiburst_gets_finer_to_the_right():
+    """右へ行くほど縞が細かくなること（変化の回数で数える）."""
+    img = render("multiburst", 480, 32, {"periods": [16, 4]})[:, :, 0]
+    row = img[16]
+    left = row[160:280]
+    right = row[300:420]
+    transitions = lambda a: int(np.count_nonzero(np.diff(a) != 0))
+    assert transitions(right) > transitions(left)
+
+
+def test_window_area_matches_requested_ratio():
+    """白い矩形の面積が指定した比率に近いこと."""
+    img = render("window", 400, 400, {"size": 0.25})[:, :, 0]
+    ratio = float((img > 0.5).sum()) / img.size
+    assert abs(ratio - 0.25) < 0.01
+
+
+def test_zoneplate_is_symmetric_and_peaks_at_center():
+    """中心対称で、中心が明るいこと."""
+    img = render("zoneplate", 128, 128)[:, :, 0]
+    assert np.allclose(img, img[:, ::-1], atol=1e-6)
+    assert np.allclose(img, img[::-1, :], atol=1e-6)
+    assert img[64, 64] > 0.9
+
+
+def _count_extrema(line):
+    return int(np.count_nonzero(np.diff(np.sign(np.diff(line))) != 0))
+
+
+def test_zoneplate_does_not_alias_within_the_inscribed_circle():
+    """既定では、山と谷が理論どおりの数だけ数えられること.
+
+    生成した時点で折り返していると、受け取った側の処理が原因なのか
+    元の絵が原因なのかを切り分けられなくなる。折り返すと山谷が畳まれて
+    数えられる数が理論値より減るので、その数で判定する。
+
+    中心から半径 r までの半周期の数は max_frequency × scale で、
+    scale は短辺の半分。既定 (0.5) なら 256 画素角で 64 になる。
+    """
+    size = 256
+    scale = size / 2
+    img = render("zoneplate", size, size)[:, :, 0]
+    observed = _count_extrema(img[size // 2, size // 2 :])
+    expected = 0.5 * scale
+    assert abs(observed - expected) <= 3
+
+
+def test_zoneplate_above_nyquist_folds_and_loses_cycles():
+    """ナイキストを超える指定にすると、数えられる山谷が理論値より大きく減ること.
+
+    「生成した時点で折り返す設定にもできる」ことと、
+    既定がそうなっていないことを、同じ数え方で対比する。
+    """
+    size = 256
+    scale = size / 2
+    img = render("zoneplate", size, size, {"max_frequency": 2.0})[:, :, 0]
+    observed = _count_extrema(img[size // 2, size // 2 :])
+    expected = 2.0 * scale
+    assert observed < expected * 0.75
+
+
+def test_checker_is_black_and_white_only():
+    img = render("checker", 64, 64, {"cols": 4, "rows": 4})
+    assert set(np.unique(img).tolist()) == {0.0, 1.0}
+
+
+def test_checker_neighbours_differ():
+    """隣り合うマスの色が違うこと."""
+    img = render("checker", 64, 64, {"cols": 4, "rows": 4})[:, :, 0]
+    assert img[8, 8] != img[8, 24]
+    assert img[8, 8] != img[24, 8]
+
+
+def test_pulsebar_has_a_thin_line_and_a_wide_bar():
+    """細い線と広い帯が別々に存在すること."""
+    img = render("pulsebar", 800, 40, {"pulse": 2, "bar": 0.25})[:, :, 0]
+    row = img[20]
+    runs = []
+    count = 0
+    for value in row:
+        if value > 0.5:
+            count += 1
+        elif count:
+            runs.append(count)
+            count = 0
+    if count:
+        runs.append(count)
+    assert len(runs) == 2
+    assert min(runs) == 2
+    assert abs(max(runs) - 200) <= 1

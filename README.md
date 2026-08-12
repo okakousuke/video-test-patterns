@@ -39,7 +39,11 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | レンズ歪み・射影変換のずれ | `grid`, `circles`, `radial` |
 | 4:2:2 / 4:2:0 の色差劣化 | `hatch` |
 | ドット欠け・画素の欠落 | `dots` |
-| 領域の重複・入れ替わり | `blocks` |
+| 領域の重複・入れ替わり | `blocks`, `checker` |
+| 黒レベルのずれ（黒浮き・黒つぶれ） | `pluge`, `smptebars` |
+| 解像限界・周波数特性 | `multiburst`, `pulsebar` |
+| 縮小・間引きでの折り返し（エイリアス） | `zoneplate` |
+| 白の面積による明るさの変動 | `window` |
 
 ### 作成できるパターン一覧
 
@@ -60,6 +64,13 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `hatch` | [hatch.png](samples/patterns/hatch.png) | 色差サンプリング確認 |
 | `dots` | [dots.png](samples/patterns/dots.png) | ドット欠け・画素欠落確認 |
 | `blocks` | [blocks.png](samples/patterns/blocks.png) | 領域の重複・入れ替わり確認 |
+| `smptebars` | [smptebars.png](samples/patterns/smptebars.png) | 3段構成。色順・青の再現・黒レベルをまとめて確認 |
+| `pluge` | [pluge.png](samples/patterns/pluge.png) | 黒レベル合わせ（黒のすぐ上を刻んだ帯） |
+| `multiburst` | [multiburst.png](samples/patterns/multiburst.png) | 解像限界・周波数特性確認 |
+| `window` | [window.png](samples/patterns/window.png) | 白の面積を変えたときの明るさの追従確認 |
+| `zoneplate` | [zoneplate.png](samples/patterns/zoneplate.png) | 折り返し（エイリアス）確認 |
+| `checker` | [checker.png](samples/patterns/checker.png) | 画素の抜け・反転・領域のずれ確認 |
+| `pulsebar` | [pulsebar.png](samples/patterns/pulsebar.png) | 急な変化とゆるやかな変化の崩れ方の違い |
 
 サンプルを再生成する場合は、リポジトリのルートで次を実行します。
 
@@ -219,6 +230,27 @@ vtp --list-storages
 vtp --config configs/hatch_bt709_10bit_v210.jsonc
 vtp --config configs/colorbar_rgb8.jsonc --width 1280 --height 720   # 上書きも可
 ```
+
+### サンプル一式の生成
+
+全パターンを、格納形式とビット深度を散らした条件で1本ずつ作ります。
+
+```sh
+python tools/make_samples.py            # generated/samples/ へ出力
+python tools/make_samples.py --seed 7   # 別のサイズ一式にする
+```
+
+画像サイズは、実際に使われている規格の解像度（QCIF / CIF / VGA / SD NTSC / SD PAL / SVGA / XGA /
+HD 720p / SXGA / WXGA / HD+ / FHD / WUXGA / QHD / 4K UHD）から選びます。
+適当な数字にすると「その幅だから起きた不具合」なのか「珍しい幅だから起きた不具合」なのか
+区別が付きません。規格の解像度なら、同じ幅で実機を通したときと突き合わせられます。
+
+どの解像度をどのパターンへ割り当てるかは乱数ですが**シードを固定**しているので、毎回同じになります。
+v210 の幅は6の倍数、mipi10 は各プレーンの幅が4の倍数、というように格納形式ごとの条件があるので、
+その条件を満たす解像度だけを割り当てます。
+
+既定では WUXGA（1920×1200）までです。10bit の 4K は1本で50MB近くになるため、
+使いたいときは `--max-pixels 8294400` を指定してください。
 
 ## テスト
 
