@@ -34,37 +34,72 @@ def _opt(options: dict[str, Any], key: str, default: Any) -> Any:
     return options.get(key, default)
 
 
+# 8 色のカラーバー。輝度の高い順に並べる（この順が崩れればチャンネルの入れ替わり）。
+BAR_COLORS = np.array(
+    [
+        (1, 1, 1),  # 白
+        (1, 1, 0),  # 黄
+        (0, 1, 1),  # シアン
+        (0, 1, 0),  # 緑
+        (1, 0, 1),  # マゼンタ
+        (1, 0, 0),  # 赤
+        (0, 0, 1),  # 青
+        (0, 0, 0),  # 黒
+    ],
+    dtype=np.float32,
+)
+
+
+def _edges(total: int, count: int) -> list[int]:
+    """total を count 等分する境界。端数は最後の区画へ寄せて挙動を固定する."""
+    return [round(i * total / count) for i in range(count + 1)]
+
+
+def _axis(width: int, height: int, orientation: str) -> np.ndarray:
+    """向きに応じて 0→1 で進む座標を返す（画素中心基準）."""
+    xx, yy = _coords(width, height)
+    if orientation == "horizontal":
+        return xx / width
+    if orientation == "vertical":
+        return yy / height
+    raise ValueError(f"orientation は horizontal / vertical です（指定: {orientation}）")
+
+
+def _gray(value: np.ndarray) -> RGB:
+    """濃淡 1 面を RGB 3 面へ広げる."""
+    return np.repeat(value.astype(np.float32)[:, :, None], 3, axis=2)
+
+
 # ---------------------------------------------------------------- パターン
 
 
 def colorbar(width: int, height: int, options: dict[str, Any]) -> RGB:
-    """8 色の縦カラーバー.
+    """8 色のカラーバー.
 
     ``level`` で 100% / 75% を切り替えます（既定は 100%）。
     色順は白・黄・シアン・緑・マゼンタ・赤・青・黒で、
     輝度の高い順に並びます。チャンネルの入れ替わりが起きると
     この並びが崩れるため、一目で分かります。
+
+    ``orientation`` に ``horizontal``（既定・縦バーが横に並ぶ）か
+    ``vertical``（横帯が縦に並ぶ）を指定します。走査の向きに依存する不具合は、
+    バーの向きを変えると出方が変わります。
     """
     level = float(_opt(options, "level", 1.0))
-    bars = np.array(
-        [
-            (1, 1, 1),  # 白
-            (1, 1, 0),  # 黄
-            (0, 1, 1),  # シアン
-            (0, 1, 0),  # 緑
-            (1, 0, 1),  # マゼンタ
-            (1, 0, 0),  # 赤
-            (0, 0, 1),  # 青
-            (0, 0, 0),  # 黒
-        ],
-        dtype=np.float32,
-    )
-    bars = bars * level
-    # 端数は最後のバーへ寄せる（幅が 8 で割り切れない場合の挙動を固定する）
-    edges = [round(i * width / 8) for i in range(9)]
+    orientation = str(_opt(options, "orientation", "horizontal"))
+    bars = BAR_COLORS * level
+
     img = _canvas(width, height)
-    for i in range(8):
-        img[:, edges[i] : edges[i + 1], :] = bars[i]
+    if orientation == "horizontal":
+        edges = _edges(width, 8)
+        for i in range(8):
+            img[:, edges[i] : edges[i + 1], :] = bars[i]
+    elif orientation == "vertical":
+        edges = _edges(height, 8)
+        for i in range(8):
+            img[edges[i] : edges[i + 1], :, :] = bars[i]
+    else:
+        raise ValueError(f"colorbar の orientation は horizontal / vertical です（指定: {orientation}）")
     return img
 
 
@@ -491,6 +526,182 @@ def pulsebar(width: int, height: int, options: dict[str, Any]) -> RGB:
     return img
 
 
+def splitbars(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """上下で振幅の違うカラーバーを並べる.
+
+    上段を 100%、下段を 75% にすると、同じ色を振幅違いで隣り合わせに見られます。
+    100% だけでは飽和して差が出ない条件でも、下段には余裕が残るため違いが現れます。
+    上下の境目で色相がずれるなら、振幅によって色の出方が変わっています。
+
+    ``top`` と ``bottom`` で各段の振幅を指定します（既定 1.0 と 0.75）。
+    """
+    top = float(_opt(options, "top", 1.0))
+    bottom = float(_opt(options, "bottom", 0.75))
+
+    img = _canvas(width, height)
+    middle = height // 2
+    edges = _edges(width, 8)
+    for i in range(8):
+        img[:middle, edges[i] : edges[i + 1], :] = BAR_COLORS[i] * top
+        img[middle:, edges[i] : edges[i + 1], :] = BAR_COLORS[i] * bottom
+    return img
+
+
+def rainbow(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """色相を連続で変えた帯（色相の連続性・色域の確認用）.
+
+    カラーバーが 8 点だけを見るのに対し、こちらは色相を切れ目なく回します。
+    途中で色が飛ぶ、同じ色が続く、といった段差が出れば、その色相の付近で
+    量子化や色域の丸めが起きています。
+
+    ``orientation`` で向き、``saturation`` と ``value`` で彩度と明るさを指定します。
+    """
+    orientation = str(_opt(options, "orientation", "horizontal"))
+    saturation = float(_opt(options, "saturation", 1.0))
+    value = float(_opt(options, "value", 1.0))
+
+    hue = _axis(width, height, orientation) * 6.0  # 0..6 の区間で 6 色を回る
+    sector = np.floor(hue).astype(np.int32) % 6
+    fraction = hue - np.floor(hue)
+
+    up = value * (1.0 - saturation * (1.0 - fraction))
+    down = value * (1.0 - saturation * fraction)
+    low = np.full_like(hue, value * (1.0 - saturation))
+    high = np.full_like(hue, value)
+
+    # 赤 → 黄 → 緑 → シアン → 青 → マゼンタ の順に回します。
+    table = [
+        (high, up, low),
+        (down, high, low),
+        (low, high, up),
+        (low, down, high),
+        (up, low, high),
+        (high, low, down),
+    ]
+
+    img = _canvas(width, height)
+    for index, (r, g, b) in enumerate(table):
+        mask = sector == index
+        img[:, :, 0][mask] = r[mask]
+        img[:, :, 1][mask] = g[mask]
+        img[:, :, 2][mask] = b[mask]
+    return img
+
+
+def sweep(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """縞の細かさを端から端まで連続で変える（解像度の落ち方の確認用）.
+
+    ``multiburst`` が決まった周波数を飛び飛びに置くのに対し、こちらは切れ目なく変えます。
+    どこから縞が見えなくなるかが境目として読めるので、落ち始める位置を細かく追えます。
+
+    ``end`` は終端での細かさ（cycles/pixel）です。既定の 0.5 はナイキストで、
+    **生成した時点では折り返しません**。0.5 を超えると生成時点で折り返すため、
+    受け取った側の処理が原因かどうかを切り分けられなくなります。
+    """
+    start = float(_opt(options, "start", 0.02))
+    end = float(_opt(options, "end", 0.5))
+    orientation = str(_opt(options, "orientation", "horizontal"))
+    if start <= 0.0 or end <= 0.0:
+        raise ValueError("sweep の start / end は 0 より大きくしてください")
+
+    length = width if orientation == "horizontal" else height
+    position = _axis(width, height, orientation) * length
+
+    # 周波数を線形に変える（チャープ）。位相はその積分なので 2 次式になります。
+    phase = 2.0 * np.pi * (start * position + (end - start) * position * position / (2.0 * length))
+    return _gray(0.5 + 0.5 * np.cos(phase))
+
+
+def shallowramp(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """狭い範囲だけを使うゆるやかな階調（量子化の段差の確認用）.
+
+    全域を使うランプでは 1 段が細かすぎて段差が見えません。振れ幅を絞ると
+    同じ画面幅を少ないコード値で埋めることになり、量子化の段差がそのまま縞として出ます。
+    ビット深度を落としたときや、レベル変換を挟んだときの粗さを見るのに使います。
+
+    ``center`` で中心の明るさ、``amplitude`` で上下の振れ幅を指定します。
+    """
+    center = float(_opt(options, "center", 0.5))
+    amplitude = float(_opt(options, "amplitude", 0.05))
+    orientation = str(_opt(options, "orientation", "horizontal"))
+
+    position = _axis(width, height, orientation)
+    value = center + (position * 2.0 - 1.0) * amplitude
+    return _gray(np.clip(value, 0.0, 1.0))
+
+
+def triangleramp(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """黒から白へ上がってまた黒へ戻る階調.
+
+    片道のランプでは、上がりと下がりで挙動が違う処理を見分けられません。
+    折り返しを 1 枚に入れておくと、左右で段差の出方が違うかどうかを同じ条件で比べられます。
+
+    ``orientation`` で向きを指定します。
+    """
+    orientation = str(_opt(options, "orientation", "horizontal"))
+    position = _axis(width, height, orientation)
+    return _gray(1.0 - np.abs(position * 2.0 - 1.0))
+
+
+def square(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """画素数で正方形になる枠（画素の縦横比の確認用）.
+
+    短辺を基準に、縦と横が同じ画素数になる枠を描きます。表示側の画素が正方でなければ、
+    この枠は長方形に見えます。``window`` が画面に対する面積比で矩形を置くのに対し、
+    こちらは画素数で正方を作るので、目的が違います。
+
+    ``size`` は短辺に対する一辺の比（既定 0.6）、``thickness`` は線の太さです。
+    """
+    size = float(_opt(options, "size", 0.6))
+    if not 0.0 < size <= 1.0:
+        raise ValueError("square の size は 0 より大きく 1 以下にしてください")
+    thickness = int(_opt(options, "thickness", max(1, min(width, height) // 200)))
+
+    side = max(1, int(round(min(width, height) * size)))
+    x0 = (width - side) // 2
+    y0 = (height - side) // 2
+
+    img = _canvas(width, height, 0.0)
+    t = max(1, min(thickness, side // 2))
+    img[y0 : y0 + t, x0 : x0 + side, :] = 1.0
+    img[y0 + side - t : y0 + side, x0 : x0 + side, :] = 1.0
+    img[y0 : y0 + side, x0 : x0 + t, :] = 1.0
+    img[y0 : y0 + side, x0 + side - t : x0 + side, :] = 1.0
+
+    # 中心にも印を置き、枠が画面の中央にあるかを見られるようにします。
+    cx, cy = width // 2, height // 2
+    img[cy - t : cy + t + 1, cx - side // 8 : cx + side // 8, :] = 1.0
+    img[cy - side // 8 : cy + side // 8, cx - t : cx + t + 1, :] = 1.0
+    return img
+
+
+def stepmatrix(width: int, height: int, options: dict[str, Any]) -> RGB:
+    """階調を格子状に並べる（多階調の抜け・つぶれの確認用）.
+
+    横一列のステップでは、段数を増やすと 1 段が細くなって見分けられません。
+    格子に並べると、既定の 16 × 16 で 256 段を一度に置けます。
+    8bit の全コード値を 1 枚で確かめられるので、どこで段が飛ぶかを面で探せます。
+
+    ``cols`` と ``rows`` で段数を指定します（段数は cols × rows）。
+    """
+    cols = int(_opt(options, "cols", 16))
+    rows = int(_opt(options, "rows", 16))
+    if cols < 1 or rows < 1:
+        raise ValueError("stepmatrix の cols / rows は 1 以上にしてください")
+
+    total = cols * rows
+    img = _canvas(width, height, 0.0)
+    xs = _edges(width, cols)
+    ys = _edges(height, rows)
+    for r in range(rows):
+        for c in range(cols):
+            index = r * cols + c
+            img[ys[r] : ys[r + 1], xs[c] : xs[c + 1], :] = np.float32(
+                index / (total - 1) if total > 1 else 0.0
+            )
+    return img
+
+
 PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "colorbar": colorbar,
     "colorbar75": colorbar75,
@@ -511,6 +722,13 @@ PATTERNS: dict[str, Callable[[int, int, dict[str, Any]], RGB]] = {
     "zoneplate": zoneplate,
     "checker": checker,
     "pulsebar": pulsebar,
+    "splitbars": splitbars,
+    "rainbow": rainbow,
+    "sweep": sweep,
+    "shallowramp": shallowramp,
+    "triangleramp": triangleramp,
+    "square": square,
+    "stepmatrix": stepmatrix,
 }
 
 PATTERN_NAMES: tuple[str, ...] = tuple(PATTERNS)

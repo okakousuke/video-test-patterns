@@ -47,6 +47,13 @@ PATTERNS = (
     "zoneplate",
     "checker",
     "pulsebar",
+    "splitbars",
+    "rainbow",
+    "sweep",
+    "shallowramp",
+    "triangleramp",
+    "square",
+    "stepmatrix",
 )
 
 # 実際に使われている画面・映像の解像度から選びます。

@@ -44,6 +44,9 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | 解像限界・周波数特性 | `multiburst`, `pulsebar` |
 | 縮小・間引きでの折り返し（エイリアス） | `zoneplate` |
 | 白の面積による明るさの変動 | `window` |
+| 色相の連続性・色域 | `rainbow` |
+| 量子化の段差（バンディング） | `shallowramp`, `stepmatrix` |
+| 画素の縦横比 | `square`, `circles` |
 
 ### 作成できるパターン一覧
 
@@ -71,6 +74,13 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `zoneplate` | [zoneplate.png](samples/patterns/zoneplate.png) | 折り返し（エイリアス）確認 |
 | `checker` | [checker.png](samples/patterns/checker.png) | 画素の抜け・反転・領域のずれ確認 |
 | `pulsebar` | [pulsebar.png](samples/patterns/pulsebar.png) | 急な変化とゆるやかな変化の崩れ方の違い |
+| `splitbars` | [splitbars.png](samples/patterns/splitbars.png) | 振幅違いのカラーバーを上下に並べて比較 |
+| `rainbow` | [rainbow.png](samples/patterns/rainbow.png) | 色相の連続性・色域確認 |
+| `sweep` | [sweep.png](samples/patterns/sweep.png) | 解像度の落ち始める位置を連続で確認 |
+| `shallowramp` | [shallowramp.png](samples/patterns/shallowramp.png) | 量子化の段差（バンディング）確認 |
+| `triangleramp` | [triangleramp.png](samples/patterns/triangleramp.png) | 上がりと下がりで挙動が違わないか確認 |
+| `square` | [square.png](samples/patterns/square.png) | 画素の縦横比確認 |
+| `stepmatrix` | [stepmatrix.png](samples/patterns/stepmatrix.png) | 256階調を格子に並べて多階調を面で確認 |
 
 サンプルを再生成する場合は、リポジトリのルートで次を実行します。
 

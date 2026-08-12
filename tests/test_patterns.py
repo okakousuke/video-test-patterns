@@ -240,3 +240,104 @@ def test_pulsebar_has_a_thin_line_and_a_wide_bar():
     assert len(runs) == 2
     assert min(runs) == 2
     assert abs(max(runs) - 200) <= 1
+
+
+# --- さらに追加したパターン ---
+
+
+def test_colorbar_vertical_stacks_bands_top_to_bottom():
+    """縦向きにすると、同じ色順が上から下へ並ぶこと."""
+    img = render("colorbar", 80, 800, {"orientation": "vertical"})
+    assert tuple(img[10, 40]) == (1.0, 1.0, 1.0)    # 上端は白
+    assert tuple(img[-10, 40]) == (0.0, 0.0, 0.0)   # 下端は黒
+    # 横方向には変化しないこと
+    assert np.array_equal(img[:, 0, :], img[:, -1, :])
+
+
+def test_colorbar_rejects_unknown_orientation():
+    with pytest.raises(ValueError):
+        render("colorbar", 16, 16, {"orientation": "diagonal"})
+
+
+def test_splitbars_upper_and_lower_differ_in_amplitude():
+    """上下で同じ色相・違う振幅になること."""
+    img = render("splitbars", 80, 40, {"top": 1.0, "bottom": 0.5})
+    top = img[5, 5]
+    bottom = img[35, 5]
+    assert tuple(top) == (1.0, 1.0, 1.0)
+    assert tuple(bottom) == (0.5, 0.5, 0.5)
+
+
+def test_rainbow_starts_and_ends_at_red():
+    """色相を一周するので、両端はどちらも赤へ戻り、中央でシアンを通ること."""
+    img = render("rainbow", 600, 8)
+    left, middle, right = img[4, 0], img[4, 300], img[4, -1]
+    assert left[0] > 0.9 and left[1] < 0.05 and left[2] < 0.05
+    assert right[0] > 0.9 and right[1] < 0.05 and right[2] < 0.05
+    assert middle[0] < 0.05 and middle[1] > 0.9 and middle[2] > 0.9
+
+
+def test_rainbow_has_many_distinct_hues():
+    """カラーバーと違い、色が連続して変わること."""
+    img = render("rainbow", 600, 4)
+    row = img[2]
+    distinct = {tuple(np.round(v, 3)) for v in row}
+    assert len(distinct) > 200
+
+
+def test_sweep_gets_finer_towards_the_end():
+    img = render("sweep", 800, 16)[:, :, 0]
+    row = img[8]
+    transitions = lambda a: int(np.count_nonzero(np.diff(np.sign(np.diff(a))) != 0))
+    assert transitions(row[600:780]) > transitions(row[20:200])
+
+
+def test_sweep_default_stays_within_nyquist():
+    """既定では生成時点で折り返さないこと（数えられる山谷が理論値と合う）."""
+    width = 1024
+    img = render("sweep", width, 8)[:, :, 0]
+    observed = int(np.count_nonzero(np.diff(np.sign(np.diff(img[4]))) != 0))
+    # 全体の周期数は平均周波数 × 幅 = (start + end) / 2 × width。
+    # 山と谷はその 2 倍あるので、数えられる極値は (start + end) × width になる。
+    expected = (0.02 + 0.5) * width
+    assert abs(observed - expected) <= 6
+
+
+def test_shallowramp_uses_only_a_narrow_range():
+    img = render("shallowramp", 256, 8, {"center": 0.5, "amplitude": 0.05})[:, :, 0]
+    assert abs(float(img.min()) - 0.45) < 0.01
+    assert abs(float(img.max()) - 0.55) < 0.01
+
+
+def test_triangleramp_peaks_in_the_middle():
+    img = render("triangleramp", 320, 8)[:, :, 0]
+    row = img[4]
+    assert int(np.argmax(row)) in range(155, 166)
+    assert np.all(np.diff(row[:159]) >= -1e-6)
+    assert np.all(np.diff(row[161:]) <= 1e-6)
+
+
+def test_square_sides_have_the_same_pixel_count():
+    """縦と横が同じ画素数であること（画素が正方でなければ長方形に見える）."""
+    img = render("square", 400, 300, {"size": 0.5, "thickness": 2})[:, :, 0]
+    lit_columns = np.flatnonzero(img.max(axis=0) > 0.5)
+    lit_rows = np.flatnonzero(img.max(axis=1) > 0.5)
+    # 中心の十字が伸びるぶんを除くため、枠そのものの範囲で比べる
+    width_span = lit_columns[-1] - lit_columns[0] + 1
+    height_span = lit_rows[-1] - lit_rows[0] + 1
+    assert width_span == height_span == 150
+
+
+def test_stepmatrix_covers_every_8bit_code():
+    """既定の 16 × 16 で 256 階調をすべて置くこと."""
+    img = render("stepmatrix", 320, 320)
+    assert len(np.unique(img)) == 256
+    assert float(img.min()) == 0.0
+    assert float(img.max()) == 1.0
+
+
+def test_stepmatrix_increases_in_raster_order():
+    """左上から右下へ向かって明るくなること."""
+    img = render("stepmatrix", 160, 160, {"cols": 4, "rows": 4})[:, :, 0]
+    assert img[20, 20] < img[20, 60] < img[20, 100] < img[20, 140]
+    assert img[20, 140] < img[60, 20]
