@@ -266,21 +266,45 @@ public sealed class RawImage
         return second ? cb : cr;
     }
 
+    /// <summary>選ばなかった成分に入れる値です。成分ごとに「無いこと」の表し方が違います。</summary>
+    private int NeutralCode(int index, PreviewRenderOptions options)
+    {
+        var shift = 1 << (BitDepth - 8);
+
+        // RGB は加算なので、無い成分は 0 です。
+        if (!_isYcbcr) return 0;
+
+        // 色差の中立は 0 ではなく中央です。0 は「振り切っている」という意味になります。
+        if (index != 0) return 128 * shift;
+
+        // 輝度の中立は、そのrangeで 0.5 にあたるコード値です。
+        // 0 にすると真っ黒になり、色差だけを見たいときに何も見えません。
+        return options.Interpretation.IsLimited
+            ? (int)Math.Round(16.0 * shift + 219.0 * shift * 0.5)
+            : (int)Math.Round(MaxCode * 0.5);
+    }
+
     private (byte R, byte G, byte B) ToRgb(int first, int second, int third, PreviewRenderOptions options)
     {
-        // 1成分だけを見るときは、そのコード値をそのまま濃淡にします。
-        // 色変換を通すと、見たい成分の値と画面の明るさが一致しなくなるためです。
-        if (options.Channel != ChannelView.All)
+        // 成分を1つだけ選び、かつコード値のまま見る指定のときは、色変換を通しません。
+        // 通すと range のぶん伸縮して、見たい成分の値と画面の明るさが一致しなくなるためです。
+        if (options.UseRawCodeGray)
         {
-            var code = options.Channel switch
+            var code = options.Channels switch
             {
-                ChannelView.First => first,
-                ChannelView.Second => second,
+                ChannelMask.First => first,
+                ChannelMask.Second => second,
                 _ => third,
             };
             var gray = ToByte(code / (double)MaxCode);
             return (gray, gray, gray);
         }
+
+        // 選ばなかった成分は中立値へ置き換えてから、いつもどおり変換します。
+        // 落とすのではなく置き換えるのは、成分どうしの関係を保ったまま1つだけ抜くためです。
+        if (!options.Channels.HasFlag(ChannelMask.First)) first = NeutralCode(0, options);
+        if (!options.Channels.HasFlag(ChannelMask.Second)) second = NeutralCode(1, options);
+        if (!options.Channels.HasFlag(ChannelMask.Third)) third = NeutralCode(2, options);
 
         if (!_isYcbcr)
             return (ToByte(first / (double)MaxCode), ToByte(second / (double)MaxCode), ToByte(third / (double)MaxCode));

@@ -388,18 +388,21 @@
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="成分" VerticalAlignment="Center" Margin="2,0,6,0"
                              Foreground="{StaticResource MutedText}" />
-                  <RadioButton Content="すべて" GroupName="Channel" Style="{StaticResource ToolToggle}"
-                               IsChecked="{Binding IsAllChannels, Mode=TwoWay}"
-                               ToolTip="3成分をまとめてRGBへ変換して表示します。" />
-                  <RadioButton Content="{Binding FirstChannelLabel}" GroupName="Channel" Style="{StaticResource ToolToggle}"
-                               IsChecked="{Binding IsFirstChannel, Mode=TwoWay}"
-                               ToolTip="第1成分だけを濃淡で表示します。色変換は通しません。" />
-                  <RadioButton Content="{Binding SecondChannelLabel}" GroupName="Channel" Style="{StaticResource ToolToggle}"
-                               IsChecked="{Binding IsSecondChannel, Mode=TwoWay}"
-                               ToolTip="第2成分だけを濃淡で表示します。4:2:0や4:2:2では、間引かれた粗さがそのまま見えます。" />
-                  <RadioButton Content="{Binding ThirdChannelLabel}" GroupName="Channel" Style="{StaticResource ToolToggle}"
-                               Margin="0" IsChecked="{Binding IsThirdChannel, Mode=TwoWay}"
-                               ToolTip="第3成分だけを濃淡で表示します。" />
+                  <!-- 排他ではなく組み合わせて選べます。選ばなかった成分は中立値に置き換えてから変換します
+                       （コード値のORではありません。ORしても意味のある数になりません）。 -->
+                  <ToggleButton Content="{Binding FirstChannelLabel}" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowFirstChannel, Mode=TwoWay}"
+                                ToolTip="第1成分を残します。外すと中立値（Y'なら0.5にあたるコード値、RGBなら0）に置き換えて変換します。" />
+                  <ToggleButton Content="{Binding SecondChannelLabel}" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowSecondChannel, Mode=TwoWay}"
+                                ToolTip="第2成分を残します。外すと中立値（Cbなら振れ0の中央、Gなら0）に置き換えて変換します。4:2:0や4:2:2では、間引かれた粗さがそのまま見えます。" />
+                  <ToggleButton Content="{Binding ThirdChannelLabel}" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowThirdChannel, Mode=TwoWay}"
+                                ToolTip="第3成分を残します。外すと中立値（Crなら振れ0の中央、Bなら0）に置き換えて変換します。" />
+                  <ToggleButton Content="コード値" Style="{StaticResource ToolToggle}" Margin="8,0,0,0"
+                                IsChecked="{Binding RawCodeGray, Mode=TwoWay}"
+                                IsEnabled="{Binding CanUseRawCodeGray}"
+                                ToolTip="選んだ成分のコード値を、色変換を通さずそのまま濃淡にします。画面の明るさ＝コード値／最大コード値になるので、面の値をそのまま読めます。成分を1つだけ選んでいるときに使えます。" />
                 </StackPanel>
               </Border>
 

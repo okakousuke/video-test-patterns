@@ -1,19 +1,38 @@
+using System.Numerics;
+
 namespace RawInspector.Decoding;
 
-/// <summary>どの成分を出すかです。</summary>
-public enum ChannelView
+/// <summary>
+/// どの成分を残すかです。組み合わせて選べます。
+///
+/// 「成分を足す」操作はビット単位のORではありません。コード値をORしても意味のある数になりません。
+/// ここでやるのは<b>選ばなかった成分を中立値へ置き換えてから、いつもどおり色変換する</b>ことです。
+///
+/// 中立値は成分によって違い、そこを取り違えると絵が嘘をつきます。
+///
+/// - RGB は加算なので、選ばなかった成分は 0 です。R と G だけなら黄色寄りの絵になります
+/// - 色差（Cb / Cr）の中立は 0 ではなく 128 &lt;&lt; (bit-8) です。
+///   0 を入れると「色差が大きく振れている」ことになり、強い色かぶりになります
+/// - 輝度（Y'）の中立は、そのrangeで 0.5 にあたるコード値です。
+///   0 を入れると真っ黒になり、色差だけを見たいときに何も見えません
+/// </summary>
+[Flags]
+public enum ChannelMask
 {
-    /// <summary>3成分をまとめてRGBへ変換します。</summary>
-    All,
+    /// <summary>どれも残しません（すべて中立値になるので、平坦な絵になります）。</summary>
+    None = 0,
 
-    /// <summary>第1成分だけをグレースケールで出します（Y'CbCrならY'、RGBならR）。</summary>
-    First,
+    /// <summary>第1成分（Y'CbCrならY'、RGBならR）。</summary>
+    First = 1,
 
-    /// <summary>第2成分だけ（Cb または G）。</summary>
-    Second,
+    /// <summary>第2成分（Cb または G）。</summary>
+    Second = 2,
 
-    /// <summary>第3成分だけ（Cr または B）。</summary>
-    Third,
+    /// <summary>第3成分（Cr または B）。</summary>
+    Third = 4,
+
+    /// <summary>3成分すべて。</summary>
+    All = First | Second | Third,
 }
 
 /// <summary>
@@ -41,9 +60,23 @@ public enum ChromaUpsample
 /// </summary>
 public readonly record struct PreviewRenderOptions(
     ColorInterpretation Interpretation,
-    ChannelView Channel,
-    ChromaUpsample Upsample)
+    ChannelMask Channels,
+    ChromaUpsample Upsample,
+    bool RawCodeGray = false)
 {
     public static PreviewRenderOptions Default(ColorInterpretation interpretation) =>
-        new(interpretation, ChannelView.All, ChromaUpsample.Nearest);
+        new(interpretation, ChannelMask.All, ChromaUpsample.Nearest);
+
+    /// <summary>選んだ成分の数です。</summary>
+    public int SelectedCount => BitOperations.PopCount((uint)Channels);
+
+    /// <summary>
+    /// コード値をそのまま濃淡にするかどうかです。
+    ///
+    /// 成分を1つだけ選んだときに限って意味を持ちます。
+    /// 色変換を通すと range のぶん伸縮するため、画面の明るさと成分のコード値が一致しなくなります。
+    /// 「この面はいくつか」を見たいときは変換を通さないほうが読めるので、別の切り替えにしてあります。
+    /// 2つ以上選んでいるときは、どの成分の値を濃淡にするのか決まらないので使いません。
+    /// </summary>
+    public bool UseRawCodeGray => RawCodeGray && SelectedCount == 1;
 }

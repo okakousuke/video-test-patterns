@@ -136,14 +136,17 @@
       <Setter Property="BorderBrush" Value="#FFD3C4A4" />
     </Style>
 
-    <!-- 操作モードの選択。ラジオボタンを小さなトグルとして見せます。 -->
-    <Style TargetType="RadioButton" x:Key="ToolToggle">
+    <!-- 小さなトグルの見た目。
+         RadioButton は ToggleButton から派生しているので、基底の ToggleButton を対象にすれば
+         排他（RadioButton）にも、組み合わせ（ToggleButton）にも同じ見た目で使えます。
+         押せないときは薄くして、押しても効かないことが分かるようにします。 -->
+    <Style TargetType="ToggleButton" x:Key="ToolToggle">
       <Setter Property="Padding" Value="9,4" />
       <Setter Property="Margin" Value="0,0,4,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Template">
         <Setter.Value>
-          <ControlTemplate TargetType="RadioButton">
+          <ControlTemplate TargetType="ToggleButton">
             <Border x:Name="Chrome" CornerRadius="4" Background="White"
                     BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -158,6 +161,9 @@
                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentFill}" />
                 <Setter Property="Foreground" Value="{StaticResource AccentText}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Opacity" Value="0.4" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

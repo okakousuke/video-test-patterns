@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Numerics;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -149,25 +150,55 @@ public sealed class MainViewModel : ObservableObject
         set { if (Set(ref _selectedRange, value)) Rerender(); }
     }
 
-    private ChannelView _channel = ChannelView.All;
-    public ChannelView Channel
+    private ChannelMask _channels = ChannelMask.All;
+    public ChannelMask Channels
     {
-        get => _channel;
+        get => _channels;
         set
         {
-            if (!Set(ref _channel, value)) return;
-            Raise(nameof(IsAllChannels));
-            Raise(nameof(IsFirstChannel));
-            Raise(nameof(IsSecondChannel));
-            Raise(nameof(IsThirdChannel));
+            if (!Set(ref _channels, value)) return;
+            Raise(nameof(ShowFirstChannel));
+            Raise(nameof(ShowSecondChannel));
+            Raise(nameof(ShowThirdChannel));
+            Raise(nameof(CanUseRawCodeGray));
             Rerender();
         }
     }
 
-    public bool IsAllChannels { get => _channel == ChannelView.All; set { if (value) Channel = ChannelView.All; } }
-    public bool IsFirstChannel { get => _channel == ChannelView.First; set { if (value) Channel = ChannelView.First; } }
-    public bool IsSecondChannel { get => _channel == ChannelView.Second; set { if (value) Channel = ChannelView.Second; } }
-    public bool IsThirdChannel { get => _channel == ChannelView.Third; set { if (value) Channel = ChannelView.Third; } }
+    private void SetChannel(ChannelMask flag, bool on) =>
+        Channels = on ? _channels | flag : _channels & ~flag;
+
+    public bool ShowFirstChannel
+    {
+        get => _channels.HasFlag(ChannelMask.First);
+        set => SetChannel(ChannelMask.First, value);
+    }
+
+    public bool ShowSecondChannel
+    {
+        get => _channels.HasFlag(ChannelMask.Second);
+        set => SetChannel(ChannelMask.Second, value);
+    }
+
+    public bool ShowThirdChannel
+    {
+        get => _channels.HasFlag(ChannelMask.Third);
+        set => SetChannel(ChannelMask.Third, value);
+    }
+
+    /// <summary>
+    /// コード値をそのまま濃淡にするかどうかです。
+    /// 成分を1つだけ選んでいるときにしか意味を持たないので、それ以外では使えなくします。
+    /// 黙って別の意味に切り替わるより、押せないほうが誤解がありません。
+    /// </summary>
+    private bool _rawCodeGray;
+    public bool RawCodeGray
+    {
+        get => _rawCodeGray;
+        set { if (Set(ref _rawCodeGray, value)) Rerender(); }
+    }
+
+    public bool CanUseRawCodeGray => BitOperations.PopCount((uint)_channels) == 1;
 
     /// <summary>成分ボタンの表示名です。色モデルで呼び名が変わります。</summary>
     private string _firstChannelLabel = "R";
@@ -291,17 +322,26 @@ public sealed class MainViewModel : ObservableObject
 
         lines.Add($"{step++}. 0-1 に丸めてから 8bit（0-255）へ量子化し、画面へ出す");
 
-        if (_channel != ChannelView.All)
+        if (_channels != ChannelMask.All)
         {
-            var label = _channel switch
-            {
-                ChannelView.First => FirstChannelLabel,
-                ChannelView.Second => SecondChannelLabel,
-                _ => ThirdChannelLabel,
-            };
+            var kept = ChannelNames(_channels);
+            var dropped = ChannelNames(ChannelMask.All & ~_channels);
             lines.Add("");
-            lines.Add($"※ いまは成分「{label}」だけを表示しています。");
-            lines.Add("   色変換は通さず、そのコード値をそのまま濃淡にしています。");
+            if (CurrentOptions.UseRawCodeGray)
+            {
+                lines.Add($"※ 成分「{kept}」のコード値を、そのまま濃淡にしています。");
+                lines.Add("   色変換は通していません。画面の明るさ = コード値 / 最大コード値です。");
+            }
+            else if (_channels == ChannelMask.None)
+            {
+                lines.Add("※ 成分をひとつも選んでいないので、すべて中立値です（平坦な絵になります）。");
+            }
+            else
+            {
+                lines.Add($"※ 成分「{kept}」だけを使い、「{dropped}」は中立値に置き換えてから変換しています。");
+                lines.Add($"   中立値: {NeutralNote()}");
+                lines.Add("   成分どうしの関係を保ったまま抜くため、落とさずに置き換えています。");
+            }
         }
 
         if (IsInterpretationOverridden)
@@ -313,6 +353,29 @@ public sealed class MainViewModel : ObservableObject
         }
 
         PreviewRecipe = string.Join("\n", lines);
+    }
+
+    /// <summary>選ばれている成分の呼び名を並べます（色モデルで呼び名が変わります）。</summary>
+    private string ChannelNames(ChannelMask mask)
+    {
+        var names = new List<string>();
+        if (mask.HasFlag(ChannelMask.First)) names.Add(FirstChannelLabel);
+        if (mask.HasFlag(ChannelMask.Second)) names.Add(SecondChannelLabel);
+        if (mask.HasFlag(ChannelMask.Third)) names.Add(ThirdChannelLabel);
+        return names.Count == 0 ? "なし" : string.Join(" + ", names);
+    }
+
+    /// <summary>中立値が成分ごとに違うので、実際に入れている値を書き出します。</summary>
+    private string NeutralNote()
+    {
+        if (_rawImage is null) return "-";
+        if (!IsYcbcrSelected) return "RGBは加算なので 0";
+
+        var shift = 1 << (_rawImage.BitDepth - 8);
+        var luma = _selectedRange == "limited"
+            ? (int)Math.Round(16.0 * shift + 219.0 * shift * 0.5)
+            : (int)Math.Round(_rawImage.MaxCode * 0.5);
+        return $"Y'は{luma}（0.5にあたるコード値）、Cb/Crは{128 * shift}（振れ0の中央）";
     }
 
     private ManifestInfo? _currentManifest;
@@ -334,7 +397,7 @@ public sealed class MainViewModel : ObservableObject
     }
 
     private PreviewRenderOptions CurrentOptions =>
-        new(new ColorInterpretation(_selectedMatrix, _selectedRange), _channel, _upsample);
+        new(new ColorInterpretation(_selectedMatrix, _selectedRange), _channels, _upsample, _rawCodeGray);
 
     /// <summary>表示条件を manifest の記録へ戻します。</summary>
     private void ResetInterpretation()
@@ -350,7 +413,8 @@ public sealed class MainViewModel : ObservableObject
         var defaults = image.DefaultInterpretation;
         _selectedMatrix = defaults.Matrix;
         _selectedRange = defaults.Range;
-        _channel = ChannelView.All;
+        _channels = ChannelMask.All;
+        _rawCodeGray = false;
         _upsample = ChromaUpsample.Nearest;
 
         var (first, second, third) = image.ChannelLabels;
@@ -362,10 +426,12 @@ public sealed class MainViewModel : ObservableObject
 
         Raise(nameof(SelectedMatrix));
         Raise(nameof(SelectedRange));
-        Raise(nameof(IsAllChannels));
-        Raise(nameof(IsFirstChannel));
-        Raise(nameof(IsSecondChannel));
-        Raise(nameof(IsThirdChannel));
+        Raise(nameof(Channels));
+        Raise(nameof(ShowFirstChannel));
+        Raise(nameof(ShowSecondChannel));
+        Raise(nameof(ShowThirdChannel));
+        Raise(nameof(RawCodeGray));
+        Raise(nameof(CanUseRawCodeGray));
         Raise(nameof(IsNearestUpsample));
         Raise(nameof(IsBilinearUpsample));
     }
