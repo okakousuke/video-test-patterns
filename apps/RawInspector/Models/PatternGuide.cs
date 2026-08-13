@@ -9,6 +9,19 @@ namespace RawInspector.Models;
 /// </summary>
 public sealed record PatternGuide(string Purpose, string HowToRead, string Options)
 {
+    /// <summary>
+    /// 縮小して表示すると、絵そのものが変わってしまうパターンです。
+    ///
+    /// プレビューの拡大縮小は最近傍に固定してあります（画素を作らないためです）。
+    /// つまり 100% 未満は単純な間引きで、細かい縞を持つ絵はその場で折り返します。
+    /// データは正しいのに画面に渦やモアレが出るので、印の付いたパターンでは
+    /// 縮小しているあいだ注意を出します。
+    ///
+    /// 印を付けるのは、周期的な細かさを持つ絵だけです。全部に付けると、
+    /// いつも出ている文になって読まれなくなります。
+    /// </summary>
+    public bool ScaleSensitive { get; init; }
+
     public static PatternGuide For(string? pattern) =>
         Guides.TryGetValue(pattern ?? "", out var guide) ? guide : Unknown;
 
@@ -72,20 +85,23 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             "回転ずれと中心付近の解像度を見ます。",
             "中心からの放射線（既定36本）です。中心へ近づくほど線の間隔が詰まるため、"
             + "解像限界がどこで来るかが見えます。線が渦を巻いていれば回転が入っています。",
-            "spokes（既定 36）"),
+            "spokes（既定 36）")
+        { ScaleSensitive = true },
 
         ["hatch"] = new(
             "色差サブサンプリングと拡大縮小の劣化を見ます。",
             "1画素幅の縞です。4:2:2 や 4:2:0 に落とすと色差だけが平均されます。"
             + "on/off に輝度が近く色差が遠い2色（例: 赤と青）を指定すると、"
             + "輝度の縞は残ったまま色が紫一色に潰れる様子が出ます。白黒の縞では色差が一定なので、この劣化は現れません。",
-            "period（既定 2）、orientation（vertical / horizontal / both）、on、off"),
+            "period（既定 2）、orientation（vertical / horizontal / both）、on、off")
+        { ScaleSensitive = true },
 
         ["dots"] = new(
             "ドット欠けと画素の欠落を見ます。",
             "規則的に置いた単画素のドットです。1画素なので、間引き・平滑化・"
             + "ニアレスト以外の拡大縮小が入ると真っ先に消えます。等倍（100%）で確認してください。",
-            "step（既定 16）"),
+            "step（既定 16）")
+        { ScaleSensitive = true },
 
         ["smptebars"] = new(
             "1枚で色順・青の再現・黒レベルをまとめて見ます。",
@@ -106,7 +122,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             "左から右へ縞が細かくなります。どこまで縞が分離して見えるかが解像限界です。"
             + "右へ行くほど白黒の差が浅くなるなら、その周波数で応答が落ちています。"
             + "先頭の白と黒が振幅の基準です。",
-            "periods（縞の周期を並べる、既定 16, 8, 4, 3, 2）"),
+            "periods（縞の周期を並べる、既定 16, 8, 4, 3, 2）")
+        { ScaleSensitive = true },
 
         ["window"] = new(
             "白の面積を変えたときの明るさの追従を見ます。",
@@ -120,19 +137,22 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "折り返しが起きると、細かいはずの場所に大きな渦や別の模様が現れます。"
             + "既定は生成した時点では折り返さない細かさなので、渦が見えたら受け取った側の処理が原因です。"
             + "四隅は短辺の半径より遠いので既定でも限界を超えます。中心からの円の内側で判断してください。",
-            "max_frequency（短辺の半径での細かさ、既定 0.5 = ナイキスト）"),
+            "max_frequency（短辺の半径での細かさ、既定 0.5 = ナイキスト）")
+        { ScaleSensitive = true },
 
         ["checker"] = new(
             "画素の抜け・反転・領域のずれを見ます。",
             "白黒の市松模様です。マスを細かくするほど、拡大縮小や圧縮での崩れが出やすくなります。"
             + "マスの境界がずれていれば位置合わせ、白黒が入れ替わっていれば反転を疑います。",
-            "cols（既定 8）、rows（既定 8）"),
+            "cols（既定 8）、rows（既定 8）")
+        { ScaleSensitive = true },
 
         ["pulsebar"] = new(
             "急な変化とゆるやかな変化で、崩れ方の違いを見ます。",
             "細い縦線が急な変化、幅の広い白帯がゆるやかな変化にあたります。"
             + "線だけが鈍るなら高い周波数が落ちており、帯の縁にだけ尾を引くなら過渡応答に問題があります。",
-            "pulse（細い線の幅・画素）、bar（白帯の幅の比、既定 0.25）"),
+            "pulse（細い線の幅・画素）、bar（白帯の幅の比、既定 0.25）")
+        { ScaleSensitive = true },
 
         ["splitbars"] = new(
             "振幅の違いで色の出方が変わらないかを見ます。",
@@ -153,7 +173,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             "縞の細かさを端から端まで切れ目なく変えます。multiburst が飛び飛びの周波数を置くのに対し、"
             + "こちらは境目を細かく追えます。既定は終端でちょうどナイキストなので、"
             + "生成した時点では折り返しません。渦や別の模様が見えたら受け取った側の処理が原因です。",
-            "start / end（cycles/pixel、既定 0.02 と 0.5）、orientation"),
+            "start / end（cycles/pixel、既定 0.02 と 0.5）、orientation")
+        { ScaleSensitive = true },
 
         ["shallowramp"] = new(
             "量子化の段差を見ます。",
@@ -188,7 +209,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             "中心へ近づくほど線の間隔が詰まります。どこで線がつながって見えるかが、その向きの限界です。"
             + "radial が全周に線を回すのに対し、こちらは上下左右に分けてあります。"
             + "水平と垂直で限界が違う（片方だけ先に潰れる）ことがあるためです。",
-            "lines（1つのくさびの本数）、direction（all / horizontal / vertical）、inner / outer"),
+            "lines（1つのくさびの本数）、direction（all / horizontal / vertical）、inner / outer")
+        { ScaleSensitive = true },
 
         ["testcard"] = new(
             "1枚でひととおり確認します。",
@@ -206,7 +228,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "それがコード値のいくつに当たるかは伝達特性で変わります。"
             + "並べた面のうち、地に溶けて見えなくなるものがその答えです。"
             + "**等倍（100%）でしか成立しません。** 縮小や拡大が入ると縞が混ざり、地の明るさ自体が変わります。",
-            "patches（面の数、既定 9）、start / end（面の明るさの範囲）"),
+            "patches（面の数、既定 9）、start / end（面の明るさの範囲）")
+        { ScaleSensitive = true },
 
         ["colorramp"] = new(
             "成分ごとの階調の段差を見ます。",
@@ -228,7 +251,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "どのくらい残っているかで、経路のどこかで手が入っていないかを見ます。"
             + "乱数は座標とシードから計算する固定の手続きで作るため、"
             + "同じシードなら環境が変わっても同じ絵になります。",
-            "seed（並び）、mono（白黒か色付きか）、center / amplitude（ばらつく範囲）"),
+            "seed（並び）、mono（白黒か色付きか）、center / amplitude（ばらつく範囲）")
+        { ScaleSensitive = true },
 
         ["barshd"] = new(
             "4段構成で、色とレベルをまとめて見ます。",
@@ -257,7 +281,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             "画面の場所ごとの解像限界を見ます。",
             "中央だけでなく四隅にもくさびを置きます。レンズや処理によっては中央と周辺で限界が違うためです。"
             + "上下の縞は左から右へ細かくなるので、どのくらいの細かさから落ちるかを合わせて読めます。",
-            "lines（くさびの本数）、periods（縞の周期）"),
+            "lines（くさびの本数）、periods（縞の周期）")
+        { ScaleSensitive = true },
 
         ["blocks"] = new(
             "領域の重複と入れ替わりを見ます。",
@@ -273,7 +298,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "これは折り返しで、見えなくなるより無いものが見えるほうが厄介なので、ここで見ます。"
             + "中心の灰色の円は、生成した時点で 1 周期が 2 画素を切る範囲なので塞いであります。"
             + "その内側に模様が出たら、それは表示側ではなく拡大処理の影響です。",
-            "spokes（くさびの本数、既定 36）"),
+            "spokes（くさびの本数、既定 36）")
+        { ScaleSensitive = true },
 
         ["linepairs"] = new(
             "どの線幅から潰れるかを段で見ます。",
@@ -281,7 +307,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "「1 画素は駄目だが 2 画素なら出る」のように、境目を言葉にしやすくなります。"
             + "上段が縦縞、下段が横縞で同じ太さを並べてあるので、向きの差も同時に読めます。"
             + "向きで結果が変わるなら、原因は解像そのものではなく、走査方向や色差の間引き方向です。",
-            "widths（線の太さ、既定 1・2・3・4・6・8）"),
+            "widths（線の太さ、既定 1・2・3・4・6・8）")
+        { ScaleSensitive = true },
 
         ["slantedge"] = new(
             "境目の立ち上がりを画素より細かく見ます。",
@@ -299,7 +326,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "この数字は狙った値ではなく、丸めたあとの実際の周期から出しています。狙いを書くと丸めで1割ずれても気付けません。"
             + "縞は2画素周期まで。それより細かい指定は落とします。書けないものを書くと絵のほうが先に折り返すためです。"
             + "字形はコードに持っているので、フォントの有無で結果が変わりません。",
-            "blocks（外周ブロックの数）、grid（格子の間隔）、periods（縞の周期）、steps（階調の段数）、level（色帯の振幅）"),
+            "blocks（外周ブロックの数）、grid（格子の間隔）、periods（縞の周期）、steps（階調の段数）、level（色帯の振幅）")
+        { ScaleSensitive = true },
 
         ["digitalcard"] = new(
             "伝送そのものを見ます（間引き量・残りビット数・行の抜け）。",
@@ -312,7 +340,8 @@ public sealed record PatternGuide(string Purpose, string HowToRead, string Optio
             + "**この帯はプレビューでは読めません**。プレビューはRGB888なので10bit側の差は必ず消えます。"
             + "右クリックでコード値を読んでください。8bitの経路なら10bit側が2値に潰れ、10bitの経路なら1ずつ分かれます。"
             + "4番は1画素おきの横縞と縦縞で、行や列が落ちる・重なると縞が消えるか位相が飛びます。四隅の直角は画角の欠けを見ます。",
-            "tick（目盛りの間隔）、pitch（縞の間隔）、chroma_on / chroma_off（色差の組）、steps（階段の段数）"),
+            "tick（目盛りの間隔）、pitch（縞の間隔）、chroma_on / chroma_off（色差の組）、steps（階段の段数）")
+        { ScaleSensitive = true },
 
         ["raster"] = new(
             "むら・純度・レベルを見ます。",

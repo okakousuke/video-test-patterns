@@ -602,7 +602,40 @@ public sealed class MainViewModel : ObservableObject
     // --- パターンの意図 ---
 
     private PatternGuide _patternGuide = PatternGuide.For(null);
-    public PatternGuide PatternGuide { get => _patternGuide; private set => Set(ref _patternGuide, value); }
+    public PatternGuide PatternGuide
+    {
+        get => _patternGuide;
+        private set { if (Set(ref _patternGuide, value)) RaiseScaleWarning(); }
+    }
+
+    // --- 縮小表示そのものが出している嘘 ---
+    //
+    // プレビューの拡大縮小は最近傍に固定です（画素を作らないため）。
+    // つまり 100% 未満は単純な間引きで、細かい縞を持つ絵はその場で折り返します。
+    // **データは正しいのに画面には渦やモアレが出ます。**
+    // 周波数を見るためのパターンでこれを黙っていると、受け取った側の不具合と読み違えます。
+    //
+    // 出す場所を2つに分けています。ステータスの行は常に目に入るかわりに短く、
+    // 絵のすぐ上の帯は場所を取るかわりに理由まで書きます。
+    // 折り返しは「説明を読みに行こう」と思う前に誤解が終わってしまうので、
+    // 絵の隣に置いて、読まなくても目に入るようにします。
+
+    public bool HasScaleWarning => HasPreview && _patternGuide.ScaleSensitive && _scalePercent < 100;
+
+    public string ScaleWarningShort => $"表示 {_scalePercent:0.#}% は画面側で折り返しています";
+
+    public string ScaleWarningText =>
+        $"いまは {_scalePercent:0.#}% の縮小表示です。プレビューは画素を作らない拡大縮小（最近傍）なので、"
+        + "縮小のあいだは画面が画素を間引いています。"
+        + "見えている渦・モアレ・消えた縞は画面側で起きたもので、RAWの中身とは別です。"
+        + "このパターンは細かい縞を持つので、判断は等倍（Ctrl+0）でしてください。";
+
+    private void RaiseScaleWarning()
+    {
+        Raise(nameof(HasScaleWarning));
+        Raise(nameof(ScaleWarningShort));
+        Raise(nameof(ScaleWarningText));
+    }
 
     /// <summary>ビューへ「全体表示に戻したい」と伝えます（表示領域の大きさはビューしか知らないため）。</summary>
     public event EventHandler? FitRequested;
@@ -680,6 +713,7 @@ public sealed class MainViewModel : ObservableObject
             SaveAllFormatsCommand.RaiseCanExecuteChanged();
             SaveRawCopyCommand.RaiseCanExecuteChanged();
             ResetInterpretationCommand.RaiseCanExecuteChanged();
+            RaiseScaleWarning();
             // 絵が入るまで全画面にする意味はないので HasPreview を条件にしています。
             // ここで知らせないと、この RelayCommand は CommandManager を見ていないので
             // 条件を確かめ直す機会が無く、絵を読み込んでもボタンは灰色のままになります。
@@ -711,6 +745,7 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(PointsPerPixel));
             Raise(nameof(CanShowPixelGrid));
             Raise(nameof(IsPixelGridVisible));
+            RaiseScaleWarning();
             // 縮小しているときは絵から画素が落ちます。作り方の説明にもそれを出します。
             UpdatePreviewRecipe();
         }

@@ -156,6 +156,7 @@
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" MinWidth="80" />
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <!-- 色見本。カーソルが外れても枠は残します（消すと幅が詰まって全体がずれるため）。 -->
@@ -196,8 +197,16 @@
                    TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusText}"
                    Foreground="{StaticResource MutedText}" />
 
+        <!-- 8bit の注意と並べます。どちらも「画面に出ているものはRAWそのものではない」話で、
+             読み違えると原因を取り違える点が同じだからです。
+             こちらは条件が揃ったときだけ出ます（縮小中かつ細かい縞を持つパターン）。 -->
+        <TextBlock Grid.Column="13" Text="{Binding ScaleWarningShort}" VerticalAlignment="Center"
+                   Margin="16,0,0,0" TextAlignment="Right" Foreground="#FF8A6D1F" FontWeight="SemiBold"
+                   Visibility="{Binding HasScaleWarning, Converter={StaticResource BoolToVisibility}}"
+                   ToolTip="{Binding ScaleWarningText}" />
+
         <!-- どのRAWでも変わらない注意なので、ここに出しっぱなしにします。 -->
-        <TextBlock Grid.Column="13" Text="{Binding BitDepthNote}" VerticalAlignment="Center"
+        <TextBlock Grid.Column="14" Text="{Binding BitDepthNote}" VerticalAlignment="Center"
                    Margin="16,0,0,0" TextAlignment="Right" Foreground="{StaticResource MutedText}"
                    ToolTip="RAWのビット深度に関わらず、画面表示は8bitへ丸めています。" />
       </Grid>
@@ -509,6 +518,39 @@
 
           </StackPanel>
         </ScrollViewer>
+
+        <!-- 縮小表示そのものが出している嘘。絵のすぐ上に置きます。
+             ステータス行にも同じことを短く出していますが、折り返しは
+             「説明を読みに行こう」と思う前に誤解が終わってしまいます。
+             冗長でも、絵の隣で目に入る位置に置きます。 -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,4" Padding="8,5" CornerRadius="4"
+                Background="#FFFDF6E3" BorderBrush="#FFE0C88A" BorderThickness="1">
+          <!-- 全画面では帯ごと畳み、同じ注意を絵の左上へ小さく重ねます（下の浮かせる層）。
+               ここに残すと、注意が出た瞬間だけ絵の高さが変わってしまいます。 -->
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Visibility" Value="Collapsed" />
+              <Style.Triggers>
+                <MultiDataTrigger>
+                  <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding HasScaleWarning}" Value="True" />
+                    <Condition Binding="{Binding IsFullScreen}" Value="False" />
+                  </MultiDataTrigger.Conditions>
+                  <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="⚠" FontSize="14" Margin="0,0,8,0"
+                       VerticalAlignment="Top" Foreground="#FF8A6D1F" />
+            <Button DockPanel.Dock="Right" Content="等倍にする" Margin="8,0,0,0"
+                    VerticalAlignment="Top" Command="{Binding ActualSizeCommand}"
+                    ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
+            <TextBlock Text="{Binding ScaleWarningText}" TextWrapping="Wrap"
+                       FontSize="11" Foreground="#FF6B5514" />
+          </DockPanel>
+        </Border>
 
         <!-- キャンバス -->
         <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
