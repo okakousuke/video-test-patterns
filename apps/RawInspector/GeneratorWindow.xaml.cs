@@ -1,5 +1,6 @@
 using System.Windows;
 using Microsoft.Win32;
+using RawInspector.Models;
 using RawInspector.ViewModels;
 
 namespace RawInspector;
@@ -30,7 +31,7 @@ public partial class GeneratorWindow : Window
         var dialog = new OpenFolderDialog
         {
             Title = "生成したものを置くフォルダ",
-            InitialDirectory = _viewModel.OutputFolder,
+            InitialDirectory = FolderPath.ForDialog(_viewModel.OutputFolder),
         };
         if (dialog.ShowDialog(this) == true) _viewModel.OutputFolder = dialog.FolderName;
     }

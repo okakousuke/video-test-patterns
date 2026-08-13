@@ -852,8 +852,8 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             if (!File.Exists(LastFolderFile)) return null;
-            var folder = File.ReadAllText(LastFolderFile).Trim();
-            return Directory.Exists(folder) ? folder : null;
+            var folder = FolderPath.Normalize(File.ReadAllText(LastFolderFile));
+            return folder is not null && Directory.Exists(folder) ? folder : null;
         }
         catch
         {
@@ -887,7 +887,7 @@ public sealed class MainViewModel : ObservableObject
         var dialog = new OpenFolderDialog
         {
             Title = "RAWとmanifestのあるフォルダを選んでください",
-            InitialDirectory = _outputFolder ?? "",
+            InitialDirectory = FolderPath.ForDialog(_outputFolder),
         };
         if (dialog.ShowDialog() != true) return;
         LoadFolder(dialog.FolderName);
@@ -945,6 +945,9 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>フォルダを読み込みます（ダイアログを出さずに指定できるよう公開しています）。</summary>
     public void LoadFolder(string folder, string? selectPath = null, double? keepScale = null)
     {
+        // 区切りをここで揃えます。`/` のまま持ち回ると、あとでダイアログへ渡したときに落ちます。
+        folder = FolderPath.Normalize(folder) ?? folder;
+
         _entries.Clear();
         ClearSelection();
         FolderText = folder;
@@ -1412,7 +1415,7 @@ public sealed class MainViewModel : ObservableObject
         {
             Filter = filter,
             FileName = SuggestedBaseName() + "." + extension,
-            InitialDirectory = _outputFolder ?? "",
+            InitialDirectory = FolderPath.ForDialog(_outputFolder),
         };
         if (dialog.ShowDialog() != true) return;
 
@@ -1448,7 +1451,7 @@ public sealed class MainViewModel : ObservableObject
         {
             Filter = "RAWデータ (*.raw)|*.raw|すべてのファイル (*.*)|*.*",
             FileName = Path.GetFileName(_currentRawPath),
-            InitialDirectory = _outputFolder ?? "",
+            InitialDirectory = FolderPath.ForDialog(_outputFolder),
         };
         if (dialog.ShowDialog() != true) return;
 
@@ -1469,7 +1472,7 @@ public sealed class MainViewModel : ObservableObject
         var dialog = new OpenFolderDialog
         {
             Title = "保存先のフォルダを選んでください",
-            InitialDirectory = _outputFolder ?? "",
+            InitialDirectory = FolderPath.ForDialog(_outputFolder),
         };
         if (dialog.ShowDialog() != true) return;
         OutputFolder = dialog.FolderName;
