@@ -19,6 +19,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
 
+        // HOME からも生成の窓を開けるようにします。窓を作れるのは画面側だけです。
+        _viewModel.RequestGenerator = OpenGenerator;
+
         _viewModel.FitRequested += (_, _) => Dispatcher.BeginInvoke(Fit, DispatcherPriority.Loaded);
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -153,7 +156,9 @@ public partial class MainWindow : Window
     /// </summary>
     private GeneratorWindow? _generatorWindow;
 
-    private void OnGenerateClick(object sender, RoutedEventArgs e)
+    private void OnGenerateClick(object sender, RoutedEventArgs e) => OpenGenerator();
+
+    private void OpenGenerator()
     {
         if (_generatorWindow is { IsLoaded: true })
         {

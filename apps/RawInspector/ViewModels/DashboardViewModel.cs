@@ -41,7 +41,24 @@ public sealed class FolderCard : ObservableObject
 /// <c>SupportsDryRun</c> は「作らずに何ができるかだけ出せるか」です。
 /// 持っていない道具に付けても効かないので、持っているものだけボタンを出します。
 /// </summary>
-public sealed record BatchTool(string Icon, string Title, string Purpose, string Script, bool SupportsDryRun);
+public sealed record BatchTool(string Icon, string Title, string Purpose, string Script, bool SupportsDryRun)
+{
+    /// <summary>
+    /// 何をどれだけ作るのか。押す前に読めるところへ置きます。
+    /// 走らせてからでは、消すまで場所を取り続けるからです。
+    /// </summary>
+    public string Detail { get; init; } = "";
+
+    /// <summary>できるものの目安（件数と容量）。実際の数は下の記録に出ます。</summary>
+    public string Yield { get; init; } = "";
+}
+
+/// <summary>
+/// 画面を開く入口です。押すと窓が出て、そこから先は手で操作します。
+/// スクリプトを回す道具（<see cref="BatchTool"/>）とは扱いを分けています。
+/// 押した先に画面があるのか、黙って走り出すのかは、押す前に分かるべきだからです。
+/// </summary>
+public sealed record AppEntry(string Key, string Icon, string Title, string Purpose, string Detail);
 
 /// <summary>
 /// 開いたときに最初に出す画面です。
@@ -57,11 +74,14 @@ public sealed record BatchTool(string Icon, string Title, string Purpose, string
 public sealed class DashboardViewModel : ObservableObject
 {
     private readonly Action<string> _openFolder;
+    private readonly Action<string> _openApp;
 
-    public DashboardViewModel(Action<string> openFolder)
+    public DashboardViewModel(Action<string> openFolder, Action<string> openApp)
     {
         _openFolder = openFolder;
+        _openApp = openApp;
         OpenFolderCommand = new RelayCommand<FolderCard>(card => _openFolder(card.Path), card => card.CanOpen);
+        OpenAppCommand = new RelayCommand<AppEntry>(entry => _openApp(entry.Key));
         RefreshCommand = new RelayCommand(async () => await RefreshAsync(), () => !IsBusy);
         RunToolCommand = new RelayCommand<BatchTool>(tool => _ = RunToolAsync(tool, dryRun: false), _ => !IsBusy && HasRepository);
         PreviewToolCommand = new RelayCommand<BatchTool>(tool => _ = RunToolAsync(tool, dryRun: true),
@@ -69,6 +89,7 @@ public sealed class DashboardViewModel : ObservableObject
     }
 
     public RelayCommand<FolderCard> OpenFolderCommand { get; }
+    public RelayCommand<AppEntry> OpenAppCommand { get; }
     public RelayCommand RefreshCommand { get; }
     public RelayCommand<BatchTool> RunToolCommand { get; }
     public RelayCommand<BatchTool> PreviewToolCommand { get; }
@@ -76,17 +97,59 @@ public sealed class DashboardViewModel : ObservableObject
     public ObservableCollection<FolderCard> Folders { get; } = [];
 
     /// <summary>
-    /// 一括生成の道具です。`--dry-run` を持つものは、作る前に件数と容量を出せます。
-    /// 300MB 近くになるものがあるので、走らせてから気付くのは避けたいところです。
+    /// 画面を開く入口です。押すと窓が出ます。
+    /// </summary>
+    public IReadOnlyList<AppEntry> Apps { get; } =
+    [
+        new("viewer", "icons/samples.png", "RAWを見る",
+            "manifest とRAWの入ったフォルダを開いて、1本ずつ確かめます。",
+            "manifest に書かれた寸法・色形式・格納形式のとおりに復号して映します。"
+            + "変換係数やレンジを手で変えて見比べたり、成分を1つずつ伏せたり、"
+            + "画素の格子を出して色差がどのます目で共有されているかまで追えます。"
+            + "下のフォルダから選ぶか、ここを押して場所を指定してください。"),
+        new("generator", "icons/gen-ok.png", "パターンを作る",
+            "条件を選んで1本作ります。作ったものはそのまま一覧へ入ります。",
+            "パターン・寸法・色形式・格納形式を選ぶと、成立しない組み合わせはその場で理由が出ます。"
+            + "パターンごとの細かい設定（段数・周期・色など）も、生成器が申告してきた範囲つきで並びます。"
+            + "実行するコマンドは画面に出したままなので、同じものを端末で再現できます。"),
+    ];
+
+    /// <summary>
+    /// 画面を持たない道具です。押すとスクリプトがそのまま走ります。
+    /// `--dry-run` を持つものは、作る前に件数と容量を出せます。
+    /// 数百MBになるものがあるので、走らせてから気付くのは避けたいところです。
     /// </summary>
     public IReadOnlyList<BatchTool> Tools { get; } =
     [
-        new("icons/patterns.png", "全パターンを1本ずつ", "42パターンを、格納形式とサイズを散らした条件で1本ずつ作ります。",
-            "tools/make_samples.py", false),
-        new("icons/variants.png", "条件を振って量産", "塗り違い・サイズ違い・形式違いを量産します（raster / cards / resolution の3群）。",
-            "tools/make_variant_raws.py", true),
-        new("icons/storage.png", "格納形式を網羅", "同じ絵を全形式で出します。形式ごとの違いだけを見るためのものです。",
-            "tools/make_reference_raws.py", false),
+        new("icons/patterns.png", "全パターンを1本ずつ",
+            "42パターンを、格納形式とサイズを散らした条件で1本ずつ作ります。",
+            "tools/make_samples.py", false)
+        {
+            Detail = "パターンの一覧そのものを目で見たいときに使います。"
+                     + "1パターンにつき1本だけ作り、格納形式と寸法はパターンごとに変えます。"
+                     + "同じ絵を形式違いで並べたいときは「格納形式を網羅」のほうです。",
+            Yield = "42本ほど。小さめの寸法なので数十MB程度です。",
+        },
+        new("icons/variants.png", "条件を振って量産",
+            "塗り違い・サイズ違い・形式違いを量産します（raster / cards / resolution の3群）。",
+            "tools/make_variant_raws.py", true)
+        {
+            Detail = "raster は単色の塗りつぶしを15色ぶんと、4:4:4 / 4:2:2 / 4:2:0 の比較を作ります"
+                     + "（平坦な面はどの間引きでも同じに出るはずで、違えば処理側の問題です）。"
+                     + "cards はカラーバー・モノスコープ・デジタルカードを標準的な解像度で、"
+                     + "resolution は解像度系9パターンを3寸法×3形式で作ります。"
+                     + "先に「先に数える」を押して、件数と容量を見てから実行してください。",
+            Yield = "百数十本。合計で数百MBになります。",
+        },
+        new("icons/storage.png", "格納形式を網羅",
+            "同じ絵を全形式で出します。形式ごとの違いだけを見るためのものです。",
+            "tools/make_reference_raws.py", false)
+        {
+            Detail = "絵とサイズを固定して、planar / packed / NV12 / P010 / v210 / MIPI10 などを一通り出します。"
+                     + "絵が同じなので、読み手側の実装で崩れたときに、形式の解釈だけが原因だと切り分けられます。"
+                     + "既定は小さい寸法です。HD・FHD・4K も指定できますが、4Kは1本で511MBになります。",
+            Yield = "小さい寸法なら20本ほどで数MBです。",
+        },
     ];
 
     public bool HasRepository => RepositoryLocator.Find() is not null;
@@ -180,7 +243,7 @@ public sealed class DashboardViewModel : ObservableObject
             {
                 Icon = "icons/recent.png",
                 Title = "前回開いていた場所",
-                Purpose = lastFolder,
+                Purpose = "前回このアプリで開いていた場所です。続きから見るときはここからどうぞ。",
                 Path = lastFolder,
             });
     }

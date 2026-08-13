@@ -54,11 +54,19 @@ public sealed class MainViewModel : ObservableObject
         SaveAllFormatsCommand = new RelayCommand(SaveAllFormats, () => HasPreview);
         ResetFiltersCommand = new RelayCommand(ResetFilters);
         ResetInterpretationCommand = new RelayCommand(ResetInterpretation, () => HasPreview);
-        Dashboard = new DashboardViewModel(folder =>
-        {
-            LoadFolder(folder);
-            ShowDashboard = false;
-        });
+        Dashboard = new DashboardViewModel(
+            folder =>
+            {
+                LoadFolder(folder);
+                ShowDashboard = false;
+            },
+            key =>
+            {
+                // 生成の窓は Window を作る話なので、画面側に任せます。
+                if (key == "generator") { RequestGenerator?.Invoke(); return; }
+                ShowDashboard = false;
+                OpenFolder();
+            });
         ShowDashboardCommand = new RelayCommand(OpenDashboard);
         ToggleFullScreenCommand = new RelayCommand(() => IsFullScreen = !IsFullScreen, () => HasPreview);
         ExitFullScreenCommand = new RelayCommand(() => IsFullScreen = false, () => IsFullScreen);
@@ -85,8 +93,24 @@ public sealed class MainViewModel : ObservableObject
     public bool ShowDashboard
     {
         get => _showDashboard;
-        private set => Set(ref _showDashboard, value);
+        private set { if (Set(ref _showDashboard, value)) Raise(nameof(IsViewerChromeVisible)); }
     }
+
+    /// <summary>
+    /// ビューアのツールバーと下段の値表示を出すかどうかです。
+    ///
+    /// HOME は別の画面であって、ビューアの一部ではありません。
+    /// 同じ枠を着せると「いま何を見ているのか」が曖昧になり、
+    /// 開いてもいないRAWの座標や値の欄が出たままになります。
+    /// 全画面のときも同じ理由で外します。
+    /// </summary>
+    public bool IsViewerChromeVisible => !_isFullScreen && !_showDashboard;
+
+    /// <summary>
+    /// 生成の窓を出してほしい、という合図です。窓を作るのは画面側の仕事なので、
+    /// ここでは頼むだけにします（ビューモデルから Window を触らないためです）。
+    /// </summary>
+    public Action? RequestGenerator { get; set; }
 
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ToggleFullScreenCommand { get; }
@@ -105,6 +129,7 @@ public sealed class MainViewModel : ObservableObject
         set
         {
             if (!Set(ref _isFullScreen, value)) return;
+            Raise(nameof(IsViewerChromeVisible));
             Raise(nameof(IsNotFullScreen));
             ExitFullScreenCommand.RaiseCanExecuteChanged();
             StatusText = value ? "全画面表示です。F11 か Esc で戻ります。" : "全画面表示を終了しました。";
@@ -1352,6 +1377,30 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// いま画面に効いている表示条件を、そのまま読める形で並べます。
+    /// RAWコピーの確認で「これは反映されません」と示すために使います。
+    /// 既定のままなら「manifest のとおり」と言い切ります。
+    /// </summary>
+    private string ViewSummaryForCopy()
+    {
+        var parts = new List<string>();
+
+        if (IsInterpretationOverridden)
+        {
+            if (IsYcbcrSelected) parts.Add($"変換係数 {_selectedMatrix}");
+            parts.Add(_selectedRange == "limited" ? "限定レンジ" : "フルレンジ");
+        }
+
+        if (_channels != ChannelMask.All)
+            parts.Add(_channels == ChannelMask.None ? "成分をすべて伏せた状態" : $"{ChannelNames(_channels)} のみ");
+
+        if (CurrentOptions.UseRawCodeGray) parts.Add("コード値をそのまま濃淡へ");
+        if (_upsample == ChromaUpsample.Bilinear) parts.Add("色差を線形補間");
+
+        return parts.Count == 0 ? "manifest のとおりの解釈" : string.Join("・", parts);
+    }
+
     /// <summary>保存するときの既定のファイル名（拡張子なし）です。</summary>
     private string SuggestedBaseName()
     {
@@ -1446,6 +1495,23 @@ public sealed class MainViewModel : ObservableObject
     private void SaveRawCopy()
     {
         if (_currentRawPath is null) return;
+
+        // 何が出るのかを先に言います。
+        //
+        // 画面には表示条件（マトリクス・レンジ・成分・補間）を通した「解釈した結果」が
+        // 出ています。RAWコピーはそれを書き出しません。**元のバイトをそのまま複製します。**
+        //
+        // ここを取り違えると、画面で色を直したつもりのRAWを渡してしまいます。
+        // 表示のとおりの絵が要るときは「画像を保存」を使ってください（PNG に焼き込みます）。
+        var answer = MessageBox.Show(
+            "元のRAWファイルをバイト単位でそのまま複製します。\n\n"
+            + $"いま画面に出している解釈（{ViewSummaryForCopy()}）は反映されません。\n"
+            + "表示のとおりの絵が必要なときは「画像を保存」を使ってください。\n\n"
+            + "複製しますか？",
+            "RAWコピー",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (answer != MessageBoxResult.OK) return;
 
         var dialog = new SaveFileDialog
         {

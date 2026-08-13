@@ -62,7 +62,7 @@
     <!-- 上段: フォルダ操作。開くのは左端、出力先は右端へ寄せます。 -->
     <Border DockPanel.Dock="Top" Padding="8" Background="{StaticResource PanelBackground}"
             BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1"
-            Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
+            Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
       <DockPanel>
         <Button DockPanel.Dock="Left" Content="📁 フォルダを開く" Style="{StaticResource AccentButton}"
                 Command="{Binding OpenFolderCommand}"
@@ -130,7 +130,7 @@
     <Border DockPanel.Dock="Bottom" Padding="8,0" Height="40"
             Background="{StaticResource PanelBackground}"
             BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0"
-            Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}"
+            Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}"
             ToolTip="コード値はRAWから読んだ生の値です（10bitなら0-1023のまま）。変換後はmatrixとrangeを適用して8bitへ丸めた値です。">
       <Grid VerticalAlignment="Center">
         <Grid.ColumnDefinitions>
@@ -210,7 +210,7 @@
 
       <!-- 左: manifest一覧。全画面のあいだは畳みます。 -->
       <DockPanel Grid.Column="0" Margin="8"
-                 Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
+                 Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
         <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -643,7 +643,7 @@
 
       <!-- 右: 生成条件とプレビューの作り方。全画面のあいだは畳みます。 -->
       <DockPanel Grid.Column="4" Margin="8"
-                 Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
+                 Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
 
         <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
           <Grid.ColumnDefinitions>

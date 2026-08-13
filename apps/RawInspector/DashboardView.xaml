@@ -2,6 +2,15 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="{StaticResource WindowBackground}">
+  <!--
+    HOME はビューアの一部ではなく、別の画面です。
+    なのでビューアの上下の枠（フォルダ操作の帯・画素値の帯）は着せず、
+    ここは自前の帯を持ちます。同じ枠のままだと「いま何を見ているのか」が曖昧になり、
+    開いてもいないRAWの座標欄が出たままになります。
+
+    中身は 2 つに分けます。**押した先に画面が出るのか、黙ってスクリプトが走るのか**は、
+    押す前に分かる必要があります。同じ形のカードで並べると区別が付きません。
+  -->
   <UserControl.Resources>
     <Style TargetType="Border" x:Key="Card">
       <Setter Property="CornerRadius" Value="6" />
@@ -11,128 +20,230 @@
       <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
+
+    <!-- 画面が出るもの。左端に色の帯を立てて、押せば窓が開くことを示します。 -->
+    <Style TargetType="Border" x:Key="AppCard" BasedOn="{StaticResource Card}">
+      <Setter Property="BorderThickness" Value="4,1,1,1" />
+      <Setter Property="BorderBrush" Value="#FF4C7BD1" />
+    </Style>
+
+    <!-- スクリプトが走るもの。端末の色にして、画面が出ないことを見た目で分けます。 -->
+    <Style TargetType="Border" x:Key="ScriptCard" BasedOn="{StaticResource Card}">
+      <Setter Property="BorderThickness" Value="4,1,1,1" />
+      <Setter Property="BorderBrush" Value="#FF6E7A5A" />
+      <Setter Property="Background" Value="#FFFBFBF7" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="CardTitle">
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style TargetType="TextBlock" x:Key="CardPurpose">
+      <Setter Property="Margin" Value="0,3,0,0" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style TargetType="TextBlock" x:Key="CardDetail">
+      <Setter Property="Margin" Value="0,5,0,0" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+    </Style>
+    <Style TargetType="TextBlock" x:Key="Mono">
+      <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+    </Style>
+
+    <!-- 区分の見出し。何が起きるのかを見出しの段階で言い切ります。 -->
+    <Style TargetType="TextBlock" x:Key="KindHeader">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Margin" Value="0,0,0,1" />
+    </Style>
+    <Style TargetType="TextBlock" x:Key="KindNote">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+    </Style>
   </UserControl.Resources>
 
-  <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,18">
-    <StackPanel MaxWidth="900" HorizontalAlignment="Left">
+  <DockPanel>
 
-      <TextBlock Text="RAW Inspector" FontSize="22" FontWeight="Bold"
-                 Foreground="{StaticResource AccentText}" />
-      <TextBlock Margin="0,2,0,16" TextWrapping="Wrap" Foreground="{StaticResource MutedText}"
-                 Text="生成した RAW を、条件を変えながら読み解くための道具です。ここでは、素材がどこに何件あるか・生成器へ繋がっているか・一括生成を走らせられるかをまとめて出します。" />
-
-      <!-- 1. 素材 -->
-      <DockPanel Margin="0,0,0,6">
-        <Button DockPanel.Dock="Right" Content="数え直す" Command="{Binding RefreshCommand}" Margin="0" />
-        <TextBlock Text="素材" Style="{StaticResource SectionHeader}" VerticalAlignment="Center" Margin="0" />
-      </DockPanel>
-
-      <ItemsControl ItemsSource="{Binding Folders}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <Border Style="{StaticResource Card}">
-              <DockPanel>
-                <Button DockPanel.Dock="Right" Content="開く" MinWidth="72" Margin="12,0,0,0"
-                        VerticalAlignment="Center"
-                        Command="{Binding DataContext.OpenFolderCommand,
-                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                        CommandParameter="{Binding}"
-                        ToolTip="このフォルダを一覧へ読み込みます。" />
-                <!-- 44px です。32px より下だと、格子や時計の針が灰色に潰れます。 -->
-                <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
-                       Margin="0,0,12,0" VerticalAlignment="Top" />
-                <StackPanel>
-                  <TextBlock Text="{Binding Title}" FontWeight="Bold" />
-                  <!-- 件数だけでなく、読めないものの数も出します。
-                       「190件あります」より「190件のうち2件が読めません」のほうが次にやることが決まります。 -->
-                  <TextBlock Text="{Binding Summary}" Margin="0,3,0,0"
-                             FontFamily="{StaticResource MonoFont}" FontSize="12" />
-                  <TextBlock Text="{Binding Purpose}" Margin="0,3,0,0" TextWrapping="Wrap"
-                             Foreground="{StaticResource MutedText}" FontSize="11" />
-                  <TextBlock Text="{Binding Path}" Margin="0,2,0,0" TextWrapping="Wrap"
-                             Foreground="{StaticResource MutedText}" FontSize="10"
-                             FontFamily="{StaticResource MonoFont}" />
-                </StackPanel>
-              </DockPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-
-      <!-- 2. 生成器 -->
-      <TextBlock Text="生成器" Style="{StaticResource SectionHeader}" Margin="0,10,0,4" />
-      <Border Style="{StaticResource Card}">
-        <DockPanel>
-          <!-- 繋がっているかどうかは、文字を読む前に色と形で分かるようにします。 -->
-          <Image DockPanel.Dock="Left" Source="icons/gen-ok.png" Width="44" Height="44"
-                 Margin="0,0,12,0" VerticalAlignment="Top"
-                 Visibility="{Binding GeneratorReady, Converter={StaticResource BoolToVisibility}}" />
-          <Image DockPanel.Dock="Left" Source="icons/gen-ng.png" Width="44" Height="44"
-                 Margin="0,0,12,0" VerticalAlignment="Top"
-                 Visibility="{Binding GeneratorNotReady, Converter={StaticResource BoolToVisibility}}" />
+    <!-- HOME 独自の上の帯。ビューアの帯とは別物です。 -->
+    <Border DockPanel.Dock="Top" Background="#FF20293A" Padding="24,14">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="数え直す" Command="{Binding RefreshCommand}"
+                VerticalAlignment="Center" Margin="12,0,0,0" Padding="10,4"
+                ToolTip="フォルダの件数と、生成器へ繋がるかどうかを調べ直します。" />
         <StackPanel>
-          <TextBlock Text="{Binding GeneratorText}" TextWrapping="Wrap"
-                     FontFamily="{StaticResource MonoFont}" FontSize="12" />
-          <!-- 繋がらないことに気付くのが「生成の窓を開いたとき」だと遅いので、ここで先に出します。 -->
-          <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Foreground="#FF8A2A20" FontSize="11"
-                     Visibility="{Binding GeneratorNotReady, Converter={StaticResource BoolToVisibility}}"
-                     Text="画素を作るのは Python 側の生成器です。繋がらないと生成はできません（読み込みと表示はこのままできます）。リポジトリのルートで pip install -e &quot;.[dev]&quot; を済ませ、python に PATH が通っているか確認してください。" />
-          <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedText}" FontSize="11"
-                     Visibility="{Binding GeneratorReady, Converter={StaticResource BoolToVisibility}}"
-                     Text="このアプリは生成しません。条件を渡して生成器を呼ぶだけです。同じ仕様の実装が2つあると、片方だけ直したときに黙ってずれます。" />
+          <TextBlock Text="映像テストパターン" Foreground="#FF8FA6C8" FontSize="11" />
+          <TextBlock Text="RAW Inspector" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,-1,0,0" />
         </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <!-- 3. 一括生成 -->
-      <TextBlock Text="一括生成" Style="{StaticResource SectionHeader}" Margin="0,10,0,4" />
-      <ItemsControl ItemsSource="{Binding Tools}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <Border Style="{StaticResource Card}">
-              <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                            VerticalAlignment="Center" Margin="12,0,0,0">
-                  <!-- 見積りを持たない道具にボタンを出しても効かないので、持っているものだけ有効にします。 -->
-                  <Button Content="見積り" MinWidth="64"
-                          Command="{Binding DataContext.PreviewToolCommand,
-                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                          CommandParameter="{Binding}"
-                          ToolTip="作らずに、何本できて何MBになるかだけ出します。" />
-                  <Button Content="実行" MinWidth="64" Margin="0"
-                          Command="{Binding DataContext.RunToolCommand,
-                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                          CommandParameter="{Binding}"
-                          ToolTip="生成器を呼んで実際に作ります。本数によっては数分かかります。" />
-                </StackPanel>
-                <!-- 44px です。32px より下だと、格子や時計の針が灰色に潰れます。 -->
-                <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
-                       Margin="0,0,12,0" VerticalAlignment="Top" />
-                <StackPanel>
-                  <TextBlock Text="{Binding Title}" FontWeight="Bold" />
-                  <TextBlock Text="{Binding Purpose}" Margin="0,3,0,0" TextWrapping="Wrap"
-                             Foreground="{StaticResource MutedText}" FontSize="11" />
-                  <TextBlock Text="{Binding Script}" Margin="0,2,0,0"
-                             Foreground="{StaticResource MutedText}" FontSize="10"
-                             FontFamily="{StaticResource MonoFont}" />
-                </StackPanel>
-              </DockPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-
-      <TextBox Text="{Binding Log, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap"
-               FontFamily="{StaticResource MonoFont}" FontSize="11" Background="White"
-               MaxHeight="220" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-               Visibility="{Binding HasLog, Converter={StaticResource BoolToVisibility}}" />
-
-      <DockPanel Margin="0,10,0,20">
-        <TextBlock Text="リポジトリ" Foreground="{StaticResource MutedText}" Margin="0,0,6,0" />
-        <TextBlock Text="{Binding RepositoryText}" TextWrapping="Wrap"
-                   Foreground="{StaticResource MutedText}" FontSize="11"
-                   FontFamily="{StaticResource MonoFont}" />
       </DockPanel>
-    </StackPanel>
-  </ScrollViewer>
+    </Border>
+
+    <!-- HOME 独自の下の帯。リポジトリの場所は常に見えているほうが、
+         どこを相手にしているのか迷いません。 -->
+    <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0" Padding="24,6">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Left" Text="リポジトリ" Foreground="{StaticResource MutedText}"
+                   FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding RepositoryText}" Style="{StaticResource Mono}" VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,18">
+      <StackPanel MaxWidth="940" HorizontalAlignment="Center">
+
+        <!-- ============ 1. 画面で操作するもの ============ -->
+        <TextBlock Text="画面で操作する" Style="{StaticResource KindHeader}" />
+        <TextBlock Style="{StaticResource KindNote}"
+                   Text="押すと窓が開きます。そこから先は手で操作します。" />
+
+        <ItemsControl ItemsSource="{Binding Apps}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Style="{StaticResource AppCard}">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="開く ›" MinWidth="80" Margin="12,0,0,0"
+                          VerticalAlignment="Center" Style="{StaticResource AccentButton}"
+                          Command="{Binding DataContext.OpenAppCommand,
+                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                          CommandParameter="{Binding}" />
+                  <!-- 44px です。32px より下だと、格子や時計の針が灰色に潰れます。 -->
+                  <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
+                         Margin="0,0,12,0" VerticalAlignment="Top" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" />
+                    <TextBlock Text="{Binding Purpose}" Style="{StaticResource CardPurpose}" />
+                    <TextBlock Text="{Binding Detail}" Style="{StaticResource CardDetail}" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- 生成器へ繋がっているか。「パターンを作る」が使えるかどうかが決まるので、
+             入口のすぐ下に置きます。生成の窓を開いてから気付くのでは遅いためです。 -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+          <DockPanel>
+            <Image DockPanel.Dock="Left" Source="icons/gen-ok.png" Width="32" Height="32"
+                   Margin="0,0,12,0" VerticalAlignment="Top"
+                   Visibility="{Binding GeneratorReady, Converter={StaticResource BoolToVisibility}}" />
+            <Image DockPanel.Dock="Left" Source="icons/gen-ng.png" Width="32" Height="32"
+                   Margin="0,0,12,0" VerticalAlignment="Top"
+                   Visibility="{Binding GeneratorNotReady, Converter={StaticResource BoolToVisibility}}" />
+            <StackPanel>
+              <TextBlock Text="{Binding GeneratorText}" TextWrapping="Wrap"
+                         FontFamily="{StaticResource MonoFont}" FontSize="12" />
+              <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Foreground="#FF8A2A20" FontSize="11"
+                         Visibility="{Binding GeneratorNotReady, Converter={StaticResource BoolToVisibility}}"
+                         Text="画素を作るのは Python 側の生成器です。繋がらないと生成はできません（読み込みと表示はこのままできます）。リポジトリのルートで pip install -e &quot;.[dev]&quot; を済ませ、python に PATH が通っているか確認してください。" />
+              <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedText}" FontSize="11"
+                         Visibility="{Binding GeneratorReady, Converter={StaticResource BoolToVisibility}}"
+                         Text="このアプリは生成しません。条件を渡して生成器を呼ぶだけです。同じ仕様の実装が2つあると、片方だけ直したときに黙ってずれます。" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <!-- ============ 2. 素材のある場所 ============ -->
+        <TextBlock Text="素材のある場所" Style="{StaticResource KindHeader}" />
+        <TextBlock Style="{StaticResource KindNote}"
+                   Text="押すとそのフォルダをビューアで開きます。件数と容量はここで数えたものです。" />
+
+        <ItemsControl ItemsSource="{Binding Folders}" Margin="0,0,0,18">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Style="{StaticResource AppCard}">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="開く ›" MinWidth="80" Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Command="{Binding DataContext.OpenFolderCommand,
+                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                          CommandParameter="{Binding}"
+                          ToolTip="このフォルダを一覧へ読み込みます。" />
+                  <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
+                         Margin="0,0,12,0" VerticalAlignment="Top" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" />
+                    <!-- 件数だけでなく、読めないものの数も出します。
+                         「190件あります」より「190件のうち2件が読めません」のほうが次にやることが決まります。 -->
+                    <TextBlock Text="{Binding Summary}" Margin="0,3,0,0"
+                               FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                    <TextBlock Text="{Binding Purpose}" Style="{StaticResource CardDetail}" />
+                    <TextBlock Text="{Binding Path}" Style="{StaticResource Mono}" Margin="0,2,0,0" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- ============ 3. スクリプトが走るもの ============ -->
+        <TextBlock Text="スクリプトを走らせる" Style="{StaticResource KindHeader}" />
+        <TextBlock Style="{StaticResource KindNote}"
+                   Text="画面は開きません。押すとその場で Python のスクリプトが動き、結果は下の記録に出ます。まとまった数のファイルができるので、実行の前に何ができるかを読んでください。" />
+
+        <ItemsControl ItemsSource="{Binding Tools}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Style="{StaticResource ScriptCard}">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Right" VerticalAlignment="Top" Margin="12,0,0,0" MinWidth="76">
+                    <!-- 見積りを持たない道具にボタンを出しても効かないので、持っているものだけ有効にします。 -->
+                    <Button Content="先に数える" Margin="0,0,0,4"
+                            Command="{Binding DataContext.PreviewToolCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}"
+                            ToolTip="作らずに、何本できて何MBになるかだけ出します。" />
+                    <Button Content="実行" Margin="0"
+                            Command="{Binding DataContext.RunToolCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}"
+                            ToolTip="スクリプトを走らせて実際に作ります。本数によっては数分かかります。" />
+                  </StackPanel>
+
+                  <!-- 走るのがスクリプトであることを、絵ではなく文字で明示します。 -->
+                  <Border DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,12,0"
+                          VerticalAlignment="Top" CornerRadius="4" Background="#FF2E3324">
+                    <Image Source="{Binding Icon}" Width="30" Height="30" />
+                  </Border>
+
+                  <StackPanel>
+                    <DockPanel>
+                      <Border DockPanel.Dock="Right" Background="#FFE8EAD9" CornerRadius="3"
+                              Padding="6,1" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <TextBlock Text="画面なし" FontSize="10" Foreground="#FF4A5238" />
+                      </Border>
+                      <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding Purpose}" Style="{StaticResource CardPurpose}" />
+                    <TextBlock Text="{Binding Detail}" Style="{StaticResource CardDetail}" />
+                    <TextBlock Text="{Binding Yield}" Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
+                               Foreground="#FF6E5A20" />
+                    <TextBlock Text="{Binding Script}" Style="{StaticResource Mono}" Margin="0,4,0,0" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- スクリプトの出力。画面が無いぶん、ここだけが起きたことの記録です。 -->
+        <TextBlock Text="スクリプトの記録" Style="{StaticResource KindHeader}" Margin="0,6,0,4"
+                   Visibility="{Binding HasLog, Converter={StaticResource BoolToVisibility}}" />
+        <TextBox Text="{Binding Log, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap"
+                 FontFamily="{StaticResource MonoFont}" FontSize="11" Background="#FF1E2018"
+                 Foreground="#FFD6DAC8" Padding="8" BorderThickness="0" Margin="0,0,0,20"
+                 MaxHeight="240" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                 Visibility="{Binding HasLog, Converter={StaticResource BoolToVisibility}}" />
+
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
 </UserControl>
