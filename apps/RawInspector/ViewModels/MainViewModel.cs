@@ -217,13 +217,36 @@ public sealed class MainViewModel : ObservableObject
 
     // --- 圧縮画像の保存形式 ---
 
+    // Encoding の中身は、このアプリが実際に書き出したファイルのヘッダから読んだ値です。
+    // 圧縮の細かい条件を選べるようにするのはこの先の話で、いまは既定のまま書き出します。
+    // 選べないからこそ、何になるのかは押す前に見えている必要があります。
     public IReadOnlyList<ImageFormatOption> ImageFormats { get; } =
     [
-        new("PNG（可逆・既定）", "png"),
-        new("JPEG（非可逆）", "jpg"),
-        new("TIFF（可逆）", "tiff"),
-        new("BMP（無圧縮）", "bmp"),
-        new("GIF（256色）", "gif"),
+        new("PNG（可逆・既定）", "png")
+        {
+            Encoding = "可逆。Deflate（zlib）／8bit RGBA（アルファ込み）／フィルタ方式0／インターレースなし",
+        },
+        new("JPEG（非可逆）", "jpg")
+        {
+            Encoding = "非可逆。品質 75（固定）／色差 4:2:0／8bit 3成分／ベースライン（JFIF）／量子化テーブル2種",
+            Caution = "JPEGは保存のときに色差を 4:2:0 へ間引きます。"
+                      + "4:4:4 や 4:2:2 のRAWを見ていても、画面のとおりの色差はファイルに残りません。"
+                      + "色差の違いを残したいときは PNG か TIFF にしてください。",
+        },
+        new("TIFF（可逆）", "tiff")
+        {
+            Encoding = "可逆。LZW／8bit RGBA（ExtraSamples でアルファを保持）",
+        },
+        new("BMP（無圧縮）", "bmp")
+        {
+            Encoding = "無圧縮。32bpp BI_RGB（幅×高さ×4バイト＋ヘッダ54バイト）",
+        },
+        new("GIF（256色）", "gif")
+        {
+            Encoding = "パレット方式（最大256色）／LZW",
+            Caution = "GIFは色をパレットへ落とします。階調やランプのパターンでは、"
+                      + "圧縮そのものは可逆でも色数の段階で情報が落ちます。",
+        },
     ];
 
     private ImageFormatOption? _selectedImageFormat;
@@ -1469,13 +1492,28 @@ public sealed class MainViewModel : ObservableObject
 
         var baseName = SuggestedBaseName();
 
+        // 5つまとめて書くので、保存ダイアログは出しません。
+        // そのぶん、どこへ何が出るのかはここで全部見せます。
+        // 形式ごとの見え方を比べるための機能なので、比べる相手の中身が分からないと意味がありません。
+        if (MessageBox.Show(
+                $"いま画面に出している絵を、{ImageFormats.Count} 形式まとめて書き出します。\n\n"
+                + $"出力先　　: {folder}\n"
+                + $"寸法　　　: {PreviewPixelWidth} × {PreviewPixelHeight}（表示倍率に関わらず等倍）\n"
+                + $"反映　　　: {ViewSummaryForCopy()}（表示倍率と格子線は入りません）\n\n"
+                + string.Join("\n", ImageFormats.Select(f =>
+                    $"{baseName}.{f.Extension}\n    {f.Encoding}"))
+                + "\n\n同じ名前のファイルがあれば上書きします。書き出しますか？",
+                "全形式で保存",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information) != MessageBoxResult.OK) return;
+
         var saved = new List<string>();
         foreach (var format in ImageFormats)
         {
             var path = Path.Combine(folder, $"{baseName}.{format.Extension}");
             try
             {
-                var (encoder, _) = EncoderFor(format.Extension);
+                var encoder = EncoderFor(format.Extension);
                 encoder.Frames.Add(BitmapFrame.Create(_previewImage));
                 using var stream = File.Create(path);
                 encoder.Save(stream);
@@ -1495,11 +1533,36 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_previewImage is null) return;
 
-        var (encoder, filter) = EncoderFor(extension);
+        var format = ImageFormats.FirstOrDefault(f => f.Extension == extension) ?? ImageFormats[0];
+        var fileName = SuggestedBaseName() + "." + extension;
+
+        // 何が焼き込まれ、何が焼き込まれないのかを先に言います。
+        // 画面には表示条件を通した結果が出ていますが、倍率と格子は画面だけのものです。
+        // 「見えているとおりに保存される」と思ったまま押すと、
+        // 400% で見ていた絵が等倍で出てきて、格子も入っていない、ということになります。
+        if (MessageBox.Show(
+                "いま画面に出している絵を、そのまま焼き込んで保存します。\n\n"
+                + $"ファイル名　　　: {fileName}\n"
+                + $"寸法　　　　　　: {PreviewPixelWidth} × {PreviewPixelHeight}（表示倍率に関わらず等倍）\n"
+                + $"反映されるもの　: {ViewSummaryForCopy()}\n"
+                + "反映されないもの: 表示倍率、画素の格子線\n\n"
+                + $"形式　　　　　　: {format.Label}\n"
+                + $"書き出す中身　　: {format.Encoding}\n"
+                + (format.Caution.Length > 0 ? $"\n※ {format.Caution}\n" : "")
+                + "\n保存しますか？",
+                "画像を保存",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information) != MessageBoxResult.OK) return;
+
+        var encoder = EncoderFor(extension);
         var dialog = new SaveFileDialog
         {
-            Filter = filter,
-            FileName = SuggestedBaseName() + "." + extension,
+            // 拡張子の絞り込みは出しません。形式は上のコンボで決まっているので、
+            // ここで選び直させると、選んだ形式と違うものを選べるように見えてしまいます。
+            // 付け忘れだけは DefaultExt で補います。
+            DefaultExt = extension,
+            AddExtension = true,
+            FileName = fileName,
             InitialDirectory = FolderPath.ForDialog(_outputFolder),
         };
         if (dialog.ShowDialog() != true) return;
@@ -1518,14 +1581,19 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private static (BitmapEncoder Encoder, string Filter) EncoderFor(string extension) => extension switch
+    /// <summary>
+    /// 形式ごとのエンコーダです。設定はどれも既定のままにしています。
+    /// 何になるのかは <see cref="ImageFormatOption.Encoding"/> に書いてあり、
+    /// 保存の前にダイアログで出します。
+    /// </summary>
+    private static BitmapEncoder EncoderFor(string extension) => extension switch
     {
-        "png" => (new PngBitmapEncoder(), "PNG画像 (*.png)|*.png"),
-        "jpg" => (new JpegBitmapEncoder(), "JPEG画像 (*.jpg)|*.jpg"),
-        "tiff" => (new TiffBitmapEncoder(), "TIFF画像 (*.tiff)|*.tiff"),
-        "bmp" => (new BmpBitmapEncoder(), "BMP画像 (*.bmp)|*.bmp"),
-        "gif" => (new GifBitmapEncoder(), "GIF画像 (*.gif)|*.gif"),
-        _ => (new PngBitmapEncoder(), "PNG画像 (*.png)|*.png"),
+        "png" => new PngBitmapEncoder(),
+        "jpg" => new JpegBitmapEncoder(),
+        "tiff" => new TiffBitmapEncoder(),
+        "bmp" => new BmpBitmapEncoder(),
+        "gif" => new GifBitmapEncoder(),
+        _ => new PngBitmapEncoder(),
     };
 
     private void SaveRawCopy()
@@ -1551,7 +1619,9 @@ public sealed class MainViewModel : ObservableObject
 
         var dialog = new SaveFileDialog
         {
-            Filter = "RAWデータ (*.raw)|*.raw|すべてのファイル (*.*)|*.*",
+            // 画像の保存と同じで、絞り込みは出しません。複製するファイルはもう決まっています。
+            DefaultExt = "raw",
+            AddExtension = true,
             FileName = Path.GetFileName(_currentRawPath),
             InitialDirectory = FolderPath.ForDialog(_outputFolder),
         };
