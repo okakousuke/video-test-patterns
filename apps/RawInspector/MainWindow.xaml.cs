@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using RawInspector.Decoding;
@@ -139,6 +140,9 @@ public partial class MainWindow : Window
             WindowState = WindowState.Normal;
             WindowStyle = WindowStyle.None;
             WindowState = WindowState.Maximized;
+
+            // 入った直後は、何ができるのかを一度見せてから引っ込めます。
+            ShowFullScreenOverlay();
         }
         else
         {
@@ -146,7 +150,102 @@ public partial class MainWindow : Window
             if (_detailWidthBeforeFullScreen is { } detail) DetailColumn.Width = detail;
             WindowStyle = _styleBeforeFullScreen;
             WindowState = _stateBeforeFullScreen;
+
+            // 消えかけのまま戻ると、次に全画面へ入ったとき薄いままになります。
+            _overlayTimer?.Stop();
+            ResetOverlay();
         }
+    }
+
+    // --- 全画面で絵に重ねる操作の出し入れ ---
+    //
+    // 出しっぱなしにすると、絵の一部が常に隠れます。動画プレイヤーと同じで、
+    // マウスを動かすと出て、しばらく静止すると消える形にします。
+    //
+    // 消えるのは左上の情報と下のバーだけです。指している画素の札は別扱いで、
+    // カーソルが画素の上にある間は静止しても消しません（MainViewModel.IsProbeActive）。
+    // 値を読んでいる最中に消えるのが、いちばん困る消え方だからです。
+
+    private static readonly TimeSpan OverlayIdleTimeout = TimeSpan.FromSeconds(2.5);
+    private static readonly Duration OverlayFade = new(TimeSpan.FromMilliseconds(150));
+
+    private DispatcherTimer? _overlayTimer;
+
+    private void OnCanvasMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_viewModel.IsFullScreen) return;
+        ShowFullScreenOverlay();
+        UpdateProbeChipSide(e.GetPosition(CanvasLayer));
+    }
+
+    private void ShowFullScreenOverlay()
+    {
+        if (!_viewModel.IsFullScreen) return;
+
+        FadeOverlay(1.0);
+        FullScreenBar.IsHitTestVisible = true;
+
+        _overlayTimer ??= CreateOverlayTimer();
+        _overlayTimer.Stop();
+        _overlayTimer.Start();
+    }
+
+    private DispatcherTimer CreateOverlayTimer()
+    {
+        var timer = new DispatcherTimer { Interval = OverlayIdleTimeout };
+        timer.Tick += (_, _) =>
+        {
+            // バーの上へカーソルを置いたまま考えているときに消すと、
+            // 押そうとしていたボタンが手の下から逃げます。
+            // ここでは止めずに、離れるまで数え直します。
+            if (FullScreenBar.IsMouseOver) return;
+
+            timer.Stop();
+            FadeOverlay(0.0);
+            // 透明でも当たり判定は残るので、見えないボタンを押せてしまいます。
+            FullScreenBar.IsHitTestVisible = false;
+        };
+        return timer;
+    }
+
+    private void FadeOverlay(double opacity)
+    {
+        var fade = new DoubleAnimation(opacity, OverlayFade);
+        FullScreenBar.BeginAnimation(OpacityProperty, fade);
+        FullScreenInfoLayer.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private void ResetOverlay()
+    {
+        // アニメーションを外してから戻します。掛けたままだと、
+        // 後からの代入がアニメーションの値に上書きされ続けます。
+        FullScreenBar.BeginAnimation(OpacityProperty, null);
+        FullScreenInfoLayer.BeginAnimation(OpacityProperty, null);
+        FullScreenBar.Opacity = 1;
+        FullScreenInfoLayer.Opacity = 1;
+        FullScreenBar.IsHitTestVisible = true;
+        FullScreenProbe.HorizontalAlignment = HorizontalAlignment.Left;
+    }
+
+    /// <summary>
+    /// 指している画素の札から、カーソルを逃がします。
+    ///
+    /// 左下の画素を読もうとすると、まさにその画素の上に札が乗ります。
+    /// 近づいた側と反対の隅へ寄せますが、遠いあいだは動かしません。
+    /// 少し動くたびに位置が変わると、読むより先に目で追えなくなります。
+    /// </summary>
+    private void UpdateProbeChipSide(Point pointer)
+    {
+        if (FullScreenProbe.Visibility != Visibility.Visible) return;
+
+        var reach = FullScreenProbe.ActualWidth + 40;
+        var bottomEdge = CanvasLayer.ActualHeight - (FullScreenProbe.ActualHeight + 40);
+        if (pointer.Y < bottomEdge) return;
+
+        if (pointer.X < reach)
+            FullScreenProbe.HorizontalAlignment = HorizontalAlignment.Right;
+        else if (pointer.X > CanvasLayer.ActualWidth - reach)
+            FullScreenProbe.HorizontalAlignment = HorizontalAlignment.Left;
     }
 
     private void OnFitClick(object sender, RoutedEventArgs e) => Fit();

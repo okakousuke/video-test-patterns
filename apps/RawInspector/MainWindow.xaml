@@ -32,6 +32,82 @@
         </DrawingGroup>
       </DrawingBrush.Drawing>
     </DrawingBrush>
+
+    <!-- === 全画面で絵に重ねるものの見た目 ===
+         明るい枠のまま重ねると、絵の隣で浮くだけでなく、
+         周りの明るさに引きずられて色と明るさの判断そのものが狂います。
+         暗く沈めて、絵を読む邪魔にならない濃さにします。 -->
+    <SolidColorBrush x:Key="OverlayFill" Color="#D91A1C21" />
+    <SolidColorBrush x:Key="OverlayStroke" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="OverlayText" Color="#FFEDEFF2" />
+    <SolidColorBrush x:Key="OverlayMutedText" Color="#FF9AA2AE" />
+
+    <Style TargetType="Border" x:Key="OverlayPanel">
+      <Setter Property="Background" Value="{StaticResource OverlayFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OverlayStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="8,6" />
+    </Style>
+
+    <Style TargetType="Button" x:Key="OverlayButton">
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Foreground" Value="{StaticResource OverlayText}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="5" Background="Transparent">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#33FFFFFF" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#55FFFFFF" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#FF6E7480" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 選択中は塗って知らせます。暗い背景では枠線だけだと分かりません。 -->
+    <Style TargetType="ToggleButton" x:Key="OverlayToggle">
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Foreground" Value="{StaticResource OverlayText}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="Chrome" CornerRadius="5" Background="Transparent">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#33FFFFFF" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentFill}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#FF6E7480" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
 
   <!-- 拡大縮小はボタンからもキーからも同じ経路（中央を保つ）を通します。 -->
@@ -365,11 +441,27 @@
                     Background="{StaticResource PanelBorder}"
                     Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}" />
 
-      <!-- 中央: プレビュー -->
-      <DockPanel Grid.Column="2" Margin="8">
+      <!-- 中央: プレビュー。
+           全画面のあいだは、この中の帯（バッジ・RAWの条件・ツールバー・注意）を
+           すべて畳みます。左右の欄を閉じても、ここが残っていると縦に170pxほど
+           持っていかれ、「描画エリアを最大限」になりません。
+           畳んだ操作は、下の浮かせるバーへ移します。 -->
+      <DockPanel Grid.Column="2">
+        <DockPanel.Style>
+          <Style TargetType="DockPanel">
+            <Setter Property="Margin" Value="8" />
+            <Style.Triggers>
+              <!-- 余白も畳みます。8px でも、4辺で16px は絵の取り分です。 -->
+              <DataTrigger Binding="{Binding IsFullScreen}" Value="True">
+                <Setter Property="Margin" Value="0" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </DockPanel.Style>
 
         <Border DockPanel.Dock="Top" Background="{StaticResource BadgeBackground}"
-                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" Padding="8,4" Margin="0,0,0,4">
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" Padding="8,4" Margin="0,0,0,4"
+                Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
           <TextBlock Text="{Binding PatternBadge}" FontWeight="Bold" Foreground="{StaticResource AccentText}" />
         </Border>
 
@@ -377,7 +469,8 @@
              下に出る絵は変換後なので、こちらが「データそのものの条件」だと分かるよう見出しを付けます。 -->
         <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4" CornerRadius="4"
                 Background="{StaticResource PanelBackground}"
-                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
           <DockPanel>
             <Border DockPanel.Dock="Left" Background="{StaticResource AccentFill}" CornerRadius="3"
                     Padding="6,1" Margin="0,0,10,0" VerticalAlignment="Center">
@@ -409,7 +502,8 @@
              同じ場所を押しているつもりで違うボタンを押すことになります。
              行を固定し、狭いときは折り返さずに横スクロールさせます。 -->
         <ScrollViewer DockPanel.Dock="Top" Margin="0,0,0,6"
-                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                      Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
           <StackPanel>
 
             <!-- 1段目: 操作モードと倍率 -->
@@ -553,8 +647,18 @@
         </Border>
 
         <!-- キャンバス -->
-        <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
-          <Grid>
+        <Border BorderBrush="{StaticResource PanelBorder}">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="BorderThickness" Value="1" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFullScreen}" Value="True">
+                  <Setter Property="BorderThickness" Value="0" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <Grid x:Name="CanvasLayer" MouseMove="OnCanvasMouseMove">
             <ScrollViewer x:Name="PreviewScroll"
                           HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                           Background="{StaticResource CheckerBrush}"
@@ -683,6 +787,117 @@
                 </Style>
               </TextBlock.Style>
             </TextBlock>
+
+            <!-- ============ 全画面のときだけ、絵の上に浮かせる層 ============
+                 Grid へ重ねるので、レイアウト上の場所は取りません。
+                 つまり、この3つを足しても絵の面積は1画素も減りません。
+                 畳んだツールバーの代わりなので、操作の中身は上と同じものです。 -->
+
+            <!-- 左上: いま何を見ているか。
+                 枠を全部畳むと、絵だけでは「どのパターンをどの倍率で見ているか」が
+                 画面のどこにも無くなります。動画プレイヤーと同じで、
+                 マウスを動かすと出て、しばらく静止すると消えます。 -->
+            <StackPanel x:Name="FullScreenInfoLayer" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="12" IsHitTestVisible="False"
+                        Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}">
+              <Border Style="{StaticResource OverlayPanel}" Padding="10,5" HorizontalAlignment="Left">
+                <TextBlock Text="{Binding FullScreenInfo}" FontSize="12"
+                           Foreground="{StaticResource OverlayText}"
+                           FontFamily="{StaticResource MonoFont}" />
+              </Border>
+
+              <!-- 縮小中の折り返しは、全画面でこそ誤解が起きます。
+                   周りの帯を畳んだぶん、絵しか手がかりが無くなるためです。
+                   通常画面の帯と同じことを、消えない札として重ねます。 -->
+              <Border Style="{StaticResource OverlayPanel}" Padding="10,5" Margin="0,6,0,0"
+                      HorizontalAlignment="Left" Background="#E6704A00" BorderBrush="#66FFD08A"
+                      Visibility="{Binding HasScaleWarning, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding ScaleWarningShort}" FontSize="12" Foreground="#FFFFE9C4" />
+              </Border>
+            </StackPanel>
+
+            <!-- 左下: 指している画素。
+                 動かすたびに出したり消したりすると絵の端がちらつくので、
+                 カーソルが画素の上にある間は静止しても消しません。
+                 ここを読んでいる最中に消えるのが、いちばん困る消え方です。
+                 カーソルが札に近づいたら、反対側の隅へ逃がします（下の code-behind）。 -->
+            <Border x:Name="FullScreenProbe"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="12" Padding="8,4" CornerRadius="6" IsHitTestVisible="False">
+              <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource OverlayPanel}">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                  <Style.Triggers>
+                    <MultiDataTrigger>
+                      <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsFullScreen}" Value="True" />
+                        <Condition Binding="{Binding IsProbeActive}" Value="True" />
+                      </MultiDataTrigger.Conditions>
+                      <Setter Property="Visibility" Value="Visible" />
+                    </MultiDataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </Border.Style>
+              <StackPanel Orientation="Horizontal">
+                <Border Width="12" Height="12" Margin="0,0,8,0" CornerRadius="2"
+                        BorderBrush="{StaticResource OverlayStroke}" BorderThickness="1"
+                        Background="{Binding HoverSwatch}" />
+                <TextBlock Text="{Binding HoverPositionText}" FontSize="11"
+                           FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource OverlayText}" />
+                <TextBlock Text="{Binding HoverCodeText}" FontSize="11" Margin="10,0,0,0"
+                           FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource OverlayText}" />
+                <TextBlock Text="{Binding HoverHexText}" FontSize="11" Margin="10,0,0,0"
+                           FontFamily="{StaticResource MonoFont}"
+                           Foreground="{StaticResource OverlayMutedText}" />
+              </StackPanel>
+            </Border>
+
+            <!-- 下中央: 操作。動画プレイヤーと同じ場所と同じ消え方にします。
+                 中身は畳んだツールバーのうち、絵を見ながら使うものだけです。
+                 読み方の設定（成分・matrix・range・色差）は、比べながら決めるものなので
+                 全画面には持ってきません。Esc で戻ってから使います。 -->
+            <Border x:Name="FullScreenBar" Style="{StaticResource OverlayPanel}"
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,20"
+                    Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}">
+              <StackPanel Orientation="Horizontal">
+                <RadioButton Content="↖" GroupName="ToolOverlay" Style="{StaticResource OverlayToggle}"
+                             IsChecked="{Binding IsArrowTool, Mode=TwoWay}"
+                             ToolTip="矢印。ドラッグもホイールも意味を変えません（既定）。" />
+                <RadioButton Content="✋" GroupName="ToolOverlay" Style="{StaticResource OverlayToggle}"
+                             IsChecked="{Binding IsHandTool, Mode=TwoWay}"
+                             ToolTip="手のひら。ドラッグで表示位置を動かします。" />
+                <RadioButton Content="🔍" GroupName="ToolOverlay" Style="{StaticResource OverlayToggle}"
+                             IsChecked="{Binding IsZoomTool, Mode=TwoWay}"
+                             ToolTip="虫眼鏡。ホイールを回すだけで拡大縮小します（Ctrl不要）。" />
+
+                <Rectangle Width="1" Height="18" Margin="6,0,6,0" Fill="{StaticResource OverlayStroke}" />
+
+                <Button Content="−" Style="{StaticResource OverlayButton}" MinWidth="30"
+                        Command="NavigationCommands.DecreaseZoom"
+                        ToolTip="表示倍率を1段階下げます（Ctrl+−）。" />
+                <TextBlock Text="{Binding ScaleText}" MinWidth="54" TextAlignment="Center"
+                           VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}"
+                           Foreground="{StaticResource OverlayText}" />
+                <Button Content="＋" Style="{StaticResource OverlayButton}" MinWidth="30"
+                        Command="NavigationCommands.IncreaseZoom"
+                        ToolTip="表示倍率を1段階上げます（Ctrl++）。" />
+                <Button Content="等倍" Style="{StaticResource OverlayButton}"
+                        Command="{Binding ActualSizeCommand}"
+                        ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
+                <Button Content="全体表示" Style="{StaticResource OverlayButton}" Click="OnFitClick"
+                        ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
+                <ToggleButton Content="格子" Style="{StaticResource OverlayToggle}"
+                              IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
+                              IsEnabled="{Binding CanShowPixelGrid}"
+                              ToolTip="600% 以上に拡大すると押せます。画素の境目に線を引きます。" />
+
+                <Rectangle Width="1" Height="18" Margin="6,0,6,0" Fill="{StaticResource OverlayStroke}" />
+
+                <Button Content="⛶ 終了" Style="{StaticResource OverlayButton}" Margin="0"
+                        Command="{Binding ExitFullScreenCommand}"
+                        ToolTip="全画面をやめて、元の画面に戻ります（F11 / Esc）。" />
+              </StackPanel>
+            </Border>
           </Grid>
         </Border>
       </DockPanel>

@@ -688,7 +688,22 @@ public sealed class MainViewModel : ObservableObject
     // --- 表示 ---
 
     private string _patternBadge = "パターン名: 未選択";
-    public string PatternBadge { get => _patternBadge; private set => Set(ref _patternBadge, value); }
+    public string PatternBadge
+    {
+        get => _patternBadge;
+        private set { if (Set(ref _patternBadge, value)) Raise(nameof(FullScreenInfo)); }
+    }
+
+    /// <summary>
+    /// 全画面のとき、絵の左上に小さく出す1行です。
+    ///
+    /// 周りの枠をすべて畳むので、「何を・どの大きさで・どの倍率で見ているか」が
+    /// 画面のどこにも残りません。パターンを何枚か行き来したあとだと、
+    /// 絵だけでは自分がどれを見ているのか言えなくなります。
+    /// バッジの接頭辞は外します。ここは項目名を書くほどの場所ではありません。
+    /// </summary>
+    public string FullScreenInfo =>
+        $"{_patternBadge.Replace("パターン名: ", "")} / {PreviewPixelWidth}×{PreviewPixelHeight} / 表示 {ScaleText}";
 
     private string _previewTitle = "RAWファイルを選択してください";
     public string PreviewTitle { get => _previewTitle; private set => Set(ref _previewTitle, value); }
@@ -708,6 +723,7 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(PreviewPixelHeight));
             Raise(nameof(ScaledWidth));
             Raise(nameof(ScaledHeight));
+            Raise(nameof(FullScreenInfo));
             SaveImageCommand.RaiseCanExecuteChanged();
             SaveSelectedFormatCommand.RaiseCanExecuteChanged();
             SaveAllFormatsCommand.RaiseCanExecuteChanged();
@@ -742,6 +758,7 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(ScaledWidth));
             Raise(nameof(ScaledHeight));
             Raise(nameof(ScaleText));
+            Raise(nameof(FullScreenInfo));
             Raise(nameof(PointsPerPixel));
             Raise(nameof(CanShowPixelGrid));
             Raise(nameof(IsPixelGridVisible));
@@ -819,6 +836,16 @@ public sealed class MainViewModel : ObservableObject
     private Brush _hoverSwatch = Brushes.Transparent;
     public Brush HoverSwatch { get => _hoverSwatch; private set => Set(ref _hoverSwatch, value); }
 
+    /// <summary>
+    /// いまカーソルが画素の上にあるかどうかです。
+    ///
+    /// 通常画面の下段は幅を固定するために出しっぱなしにしますが、
+    /// 全画面では絵に重ねるので、指していないあいだ「—」だけの札が
+    /// 絵の上に残ることになります。指している時だけ出すために使います。
+    /// </summary>
+    private bool _isProbeActive;
+    public bool IsProbeActive { get => _isProbeActive; private set => Set(ref _isProbeActive, value); }
+
     private string _samplePositionText = Placeholder;
     public string SamplePositionText { get => _samplePositionText; private set => Set(ref _samplePositionText, value); }
 
@@ -861,6 +888,7 @@ public sealed class MainViewModel : ObservableObject
         HoverHexText = sample.Hex;
         HoverRgbText = sample.RgbText;
         HoverSwatch = new SolidColorBrush(Color.FromRgb(sample.R, sample.G, sample.B));
+        IsProbeActive = true;
 
         SamplePositionText = sample.PositionText;
         SampleCodeText = sample.CodeText;
@@ -881,6 +909,7 @@ public sealed class MainViewModel : ObservableObject
         HoverHexText = Placeholder;
         HoverRgbText = Placeholder;
         HoverSwatch = Brushes.Transparent;
+        IsProbeActive = false;
     }
 
     /// <summary>
