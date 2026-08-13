@@ -66,8 +66,12 @@ public sealed class MainViewModel : ObservableObject
                 if (key == "generator") { RequestGenerator?.Invoke(); return; }
                 ShowDashboard = false;
                 OpenFolder();
-            });
+            },
+            document => RequestHelp?.Invoke(document));
         ShowDashboardCommand = new RelayCommand(OpenDashboard);
+        // F1 とツールバーから呼びます。HOME とビューアは別の画面なので、出す説明も分けます。
+        ShowHelpCommand = new RelayCommand(() =>
+            RequestHelp?.Invoke(ShowDashboard ? HelpLibrary.Launcher : HelpLibrary.Viewer));
         ToggleFullScreenCommand = new RelayCommand(() => IsFullScreen = !IsFullScreen, () => HasPreview);
         ExitFullScreenCommand = new RelayCommand(() => IsFullScreen = false, () => IsFullScreen);
         ExpandAllCommand = new RelayCommand(() => SetAllGroupsExpanded(true));
@@ -112,7 +116,14 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public Action? RequestGenerator { get; set; }
 
+    /// <summary>
+    /// 使い方を出してほしい、という合図です。生成の窓と同じで、窓を作るのは画面側の仕事です。
+    /// 引数は `docs/` からの相対パスで、どの画面の説明を先に出すかを指定します。
+    /// </summary>
+    public Action<string>? RequestHelp { get; set; }
+
     public RelayCommand ShowDashboardCommand { get; }
+    public RelayCommand ShowHelpCommand { get; }
     public RelayCommand ToggleFullScreenCommand { get; }
     public RelayCommand ExitFullScreenCommand { get; }
 

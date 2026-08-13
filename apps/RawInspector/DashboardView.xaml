@@ -78,6 +78,11 @@
         <Button DockPanel.Dock="Right" Content="数え直す" Command="{Binding RefreshCommand}"
                 VerticalAlignment="Center" Margin="12,0,0,0" Padding="10,4"
                 ToolTip="フォルダの件数と、生成器へ繋がるかどうかを調べ直します。" />
+        <!-- 使い方は画面ごとに分かれています。ここからは、この画面の説明を開きます。 -->
+        <Button DockPanel.Dock="Right" Content="？ 使い方" Command="{Binding OpenHelpCommand}"
+                CommandParameter="usage/launcher.md"
+                VerticalAlignment="Center" Margin="12,0,0,0" Padding="10,4"
+                ToolTip="この画面の使い方を開きます（F1）。ほかの画面の説明も同じ窓から辿れます。" />
         <StackPanel>
           <TextBlock Text="映像テストパターン" Foreground="#FF8FA6C8" FontSize="11" />
           <TextBlock Text="RAW Inspector" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,-1,0,0" />
@@ -109,11 +114,20 @@
             <DataTemplate>
               <Border Style="{StaticResource AppCard}">
                 <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="開く ›" MinWidth="80" Margin="12,0,0,0"
-                          VerticalAlignment="Center" Style="{StaticResource AccentButton}"
-                          Command="{Binding DataContext.OpenAppCommand,
-                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                          CommandParameter="{Binding}" />
+                  <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="80">
+                    <Button Content="開く ›" MinWidth="80" Margin="0,0,0,4"
+                            Style="{StaticResource AccentButton}"
+                            Command="{Binding DataContext.OpenAppCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}" />
+                    <!-- カードに収まらない話は文書のほうへ送ります。
+                         カードを長くすると、並べて見比べられなくなるためです。 -->
+                    <Button Content="使い方" MinWidth="80" Margin="0"
+                            Command="{Binding DataContext.OpenHelpCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding Help}"
+                            ToolTip="この画面の説明を開きます。" />
+                  </StackPanel>
                   <!-- 44px です。32px より下だと、格子や時計の針が灰色に潰れます。 -->
                   <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="44" Height="44"
                          Margin="0,0,12,0" VerticalAlignment="Top" />
@@ -201,11 +215,16 @@
                                       RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                             CommandParameter="{Binding}"
                             ToolTip="作らずに、何本できて何MBになるかだけ出します。" />
-                    <Button Content="実行" Margin="0"
+                    <Button Content="実行" Margin="0,0,0,4"
                             Command="{Binding DataContext.RunToolCommand,
                                       RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                             CommandParameter="{Binding}"
                             ToolTip="スクリプトを走らせて実際に作ります。本数によっては数分かかります。" />
+                    <Button Content="使い方" Margin="0"
+                            Command="{Binding DataContext.OpenHelpCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding Help}"
+                            ToolTip="3つの道具の違いと、出力先・容量の説明を開きます。" />
                   </StackPanel>
 
                   <!-- 走るのがスクリプトであることを、絵ではなく文字で明示します。 -->

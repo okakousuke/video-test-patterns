@@ -47,6 +47,8 @@
     <KeyBinding Modifiers="Control" Key="D4" Command="{Binding SaveImageCommand}" CommandParameter="bmp" />
     <KeyBinding Modifiers="Control" Key="D5" Command="{Binding SaveImageCommand}" CommandParameter="gif" />
     <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenFolderCommand}" />
+    <!-- いま出ている画面の説明を開きます。HOME とビューアで行き先が変わります。 -->
+    <KeyBinding Key="F1" Command="{Binding ShowHelpCommand}" />
     <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
     <KeyBinding Key="F11" Command="{Binding ToggleFullScreenCommand}" />
     <KeyBinding Key="Escape" Command="{Binding ExitFullScreenCommand}" />
@@ -80,8 +82,14 @@
                 ToolTip="最初の画面（素材の状態・生成器・一括生成）へ戻ります。読み込んだ一覧はそのまま残ります。" />
 
         <!-- 作ってすぐ見る、が1周するように、開く操作の隣へ置きます。 -->
-        <Button DockPanel.Dock="Left" Content="＋ 生成..." Margin="0,0,12,0" Click="OnGenerateClick"
+        <Button DockPanel.Dock="Left" Content="＋ 生成..." Margin="0,0,6,0" Click="OnGenerateClick"
                 ToolTip="パターンを生成します。画素を作るのはPython側の生成器で、ここはその呼び出しです。生成したRAWはこの一覧へ取り込んで選択します。" />
+
+        <!-- 画面に出ているのはRAWそのものではない、という前提の説明がここにあります。
+             ツールチップだけでは項目単位の話しかできません。 -->
+        <Button DockPanel.Dock="Left" Content="？" Width="34" MinWidth="34" Margin="0,0,12,0"
+                Command="{Binding ShowHelpCommand}"
+                ToolTip="この画面の使い方を開きます（F1）。表示条件の切り替えや画素の値の読み方はこちらです。" />
 
         <!-- 書き出しはすべてここへ集めます。保存先の指定と保存の操作が離れていると、
              どこへ出るのか分からないまま押すことになります。 -->

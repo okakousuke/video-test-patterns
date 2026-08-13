@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Win32;
 using RawInspector.Models;
 using RawInspector.ViewModels;
@@ -25,6 +26,10 @@ public partial class GeneratorWindow : Window
     }
 
     private async void OnReconnect(object sender, RoutedEventArgs e) => await _viewModel.LoadCatalogAsync();
+
+    /// <summary>この窓の使い方を出します。使い方の窓は1つだけなので、開いていればそれを使い回します。</summary>
+    private void OnHelpExecuted(object sender, ExecutedRoutedEventArgs e) =>
+        HelpWindow.ShowDocument(this, HelpLibrary.Generator);
 
     private void OnResetPatternOptions(object sender, RoutedEventArgs e) => _viewModel.ResetPatternOptions();
 

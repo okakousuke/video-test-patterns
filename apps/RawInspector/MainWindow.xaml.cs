@@ -21,6 +21,7 @@ public partial class MainWindow : Window
 
         // HOME からも生成の窓を開けるようにします。窓を作れるのは画面側だけです。
         _viewModel.RequestGenerator = OpenGenerator;
+        _viewModel.RequestHelp = document => HelpWindow.ShowDocument(this, document);
 
         _viewModel.FitRequested += (_, _) => Dispatcher.BeginInvoke(Fit, DispatcherPriority.Loaded);
         _viewModel.PropertyChanged += (_, e) =>

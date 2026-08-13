@@ -4,6 +4,12 @@
         Title="パターンを生成" Height="720" Width="720"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource WindowBackground}">
+
+  <!-- ApplicationCommands.Help は F1 を最初から持っているので、キーの割り当ては書きません。 -->
+  <Window.CommandBindings>
+    <CommandBinding Command="Help" Executed="OnHelpExecuted" />
+  </Window.CommandBindings>
+
   <Window.Resources>
     <Style TargetType="TextBlock" x:Key="FieldLabel">
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -39,6 +45,9 @@
             Background="{StaticResource GroupFill}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="10,0,0,0">
+          <!-- 成立しない組み合わせの読み方と、選択肢がどこから来るかはここに書いてあります。 -->
+          <Button Content="？" Width="34" MinWidth="34" Margin="0,0,6,0" Command="Help"
+                  ToolTip="この窓の使い方を開きます（F1）。" />
           <Button Content="コマンドをコピー" Command="{Binding CopyCommandCommand}" Margin="0,0,6,0"
                   ToolTip="このまま端末へ貼って実行できます。" />
           <Button Content="生成" Command="{Binding GenerateCommand}" MinWidth="80" Margin="0"

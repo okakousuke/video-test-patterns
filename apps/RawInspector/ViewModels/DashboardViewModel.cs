@@ -51,6 +51,9 @@ public sealed record BatchTool(string Icon, string Title, string Purpose, string
 
     /// <summary>できるものの目安（件数と容量）。実際の数は下の記録に出ます。</summary>
     public string Yield { get; init; } = "";
+
+    /// <summary>この道具の説明がある文書です。カードに収まらない話はそちらへ送ります。</summary>
+    public string Help { get; init; } = HelpLibrary.BatchTools;
 }
 
 /// <summary>
@@ -58,7 +61,7 @@ public sealed record BatchTool(string Icon, string Title, string Purpose, string
 /// スクリプトを回す道具（<see cref="BatchTool"/>）とは扱いを分けています。
 /// 押した先に画面があるのか、黙って走り出すのかは、押す前に分かるべきだからです。
 /// </summary>
-public sealed record AppEntry(string Key, string Icon, string Title, string Purpose, string Detail);
+public sealed record AppEntry(string Key, string Icon, string Title, string Purpose, string Detail, string Help);
 
 /// <summary>
 /// 開いたときに最初に出す画面です。
@@ -75,13 +78,16 @@ public sealed class DashboardViewModel : ObservableObject
 {
     private readonly Action<string> _openFolder;
     private readonly Action<string> _openApp;
+    private readonly Action<string> _openHelp;
 
-    public DashboardViewModel(Action<string> openFolder, Action<string> openApp)
+    public DashboardViewModel(Action<string> openFolder, Action<string> openApp, Action<string> openHelp)
     {
         _openFolder = openFolder;
         _openApp = openApp;
+        _openHelp = openHelp;
         OpenFolderCommand = new RelayCommand<FolderCard>(card => _openFolder(card.Path), card => card.CanOpen);
         OpenAppCommand = new RelayCommand<AppEntry>(entry => _openApp(entry.Key));
+        OpenHelpCommand = new RelayCommand<string>(document => _openHelp(document));
         RefreshCommand = new RelayCommand(async () => await RefreshAsync(), () => !IsBusy);
         RunToolCommand = new RelayCommand<BatchTool>(tool => _ = RunToolAsync(tool, dryRun: false), _ => !IsBusy && HasRepository);
         PreviewToolCommand = new RelayCommand<BatchTool>(tool => _ = RunToolAsync(tool, dryRun: true),
@@ -90,6 +96,7 @@ public sealed class DashboardViewModel : ObservableObject
 
     public RelayCommand<FolderCard> OpenFolderCommand { get; }
     public RelayCommand<AppEntry> OpenAppCommand { get; }
+    public RelayCommand<string> OpenHelpCommand { get; }
     public RelayCommand RefreshCommand { get; }
     public RelayCommand<BatchTool> RunToolCommand { get; }
     public RelayCommand<BatchTool> PreviewToolCommand { get; }
@@ -106,12 +113,14 @@ public sealed class DashboardViewModel : ObservableObject
             "manifest に書かれた寸法・色形式・格納形式のとおりに復号して映します。"
             + "変換係数やレンジを手で変えて見比べたり、成分を1つずつ伏せたり、"
             + "画素の格子を出して色差がどのます目で共有されているかまで追えます。"
-            + "下のフォルダから選ぶか、ここを押して場所を指定してください。"),
+            + "下のフォルダから選ぶか、ここを押して場所を指定してください。",
+            HelpLibrary.Viewer),
         new("generator", "icons/gen-ok.png", "パターンを作る",
             "条件を選んで1本作ります。作ったものはそのまま一覧へ入ります。",
             "パターン・寸法・色形式・格納形式を選ぶと、成立しない組み合わせはその場で理由が出ます。"
             + "パターンごとの細かい設定（段数・周期・色など）も、生成器が申告してきた範囲つきで並びます。"
-            + "実行するコマンドは画面に出したままなので、同じものを端末で再現できます。"),
+            + "実行するコマンドは画面に出したままなので、同じものを端末で再現できます。",
+            HelpLibrary.Generator),
     ];
 
     /// <summary>
