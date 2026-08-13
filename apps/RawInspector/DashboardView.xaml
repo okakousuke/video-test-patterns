@@ -27,11 +27,22 @@
       <Setter Property="BorderBrush" Value="#FF4C7BD1" />
     </Style>
 
-    <!-- スクリプトが走るもの。端末の色にして、画面が出ないことを見た目で分けます。 -->
-    <Style TargetType="Border" x:Key="ScriptCard" BasedOn="{StaticResource Card}">
+    <!--
+      スクリプトが走るもの。端末の色にして、画面が出ないことを見た目で分けます。
+
+      こちらは幅いっぱいの帯にしません。上の入口と同じ形で縦に積むと、
+      色帯の違いだけが頼りになり、走らせてから「画面が出ない」と気付きます。
+      正方形寄りの札にして横に並べると、形の段階で別の種類だと分かり、
+      3つを並べて見比べたうえで選べます。
+    -->
+    <Style TargetType="Border" x:Key="ScriptTile" BasedOn="{StaticResource Card}">
       <Setter Property="BorderThickness" Value="4,1,1,1" />
       <Setter Property="BorderBrush" Value="#FF6E7A5A" />
       <Setter Property="Background" Value="#FFFBFBF7" />
+      <!-- 3枚で 918px。上の帯（MaxWidth 940）に収まり、窓を狭めれば2枚ずつに折れます。 -->
+      <Setter Property="Width" Value="296" />
+      <Setter Property="Height" Value="300" />
+      <Setter Property="Margin" Value="0,0,10,10" />
     </Style>
 
     <Style TargetType="TextBlock" x:Key="CardTitle">
@@ -204,18 +215,73 @@
                    Text="画面は開きません。押すとその場で Python のスクリプトが動き、結果は下の記録に出ます。まとまった数のファイルができるので、実行の前に何ができるかを読んでください。" />
 
         <ItemsControl ItemsSource="{Binding Tools}">
+          <!-- 横へ並べ、入りきらなければ折り返します。窓幅を決め打ちにはしません。 -->
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Style="{StaticResource ScriptCard}">
-                <DockPanel>
-                  <StackPanel DockPanel.Dock="Right" VerticalAlignment="Top" Margin="12,0,0,0" MinWidth="76">
+              <Border Style="{StaticResource ScriptTile}">
+                <!-- 札に収まらない説明は消さずに、ここで全文を出します。 -->
+                <Border.ToolTip>
+                  <ToolTip MaxWidth="420">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Title}" FontWeight="Bold" />
+                      <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                  </ToolTip>
+                </Border.ToolTip>
+
+                <!-- 高さが決まっているので、伸び縮みさせるのは説明の段だけにします。
+                     件数・容量と走らせるボタンは、どの札でも同じ高さに来ます。
+                     並べて見比べるときに、目が上下に泳がないためです。 -->
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+
+                  <DockPanel Grid.Row="0">
+                    <!-- 走るのがスクリプトであることを、絵ではなく文字で明示します。 -->
+                    <Border DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,10,0"
+                            VerticalAlignment="Top" CornerRadius="4" Background="#FF2E3324">
+                      <Image Source="{Binding Icon}" Width="28" Height="28" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" TextWrapping="Wrap" />
+                      <Border Background="#FFE8EAD9" CornerRadius="3" Padding="6,1"
+                              HorizontalAlignment="Left" Margin="0,3,0,0">
+                        <TextBlock Text="画面なし" FontSize="10" Foreground="#FF4A5238" />
+                      </Border>
+                    </StackPanel>
+                  </DockPanel>
+
+                  <TextBlock Grid.Row="1" Text="{Binding Purpose}" Style="{StaticResource CardPurpose}"
+                             Margin="0,10,0,0" />
+                  <!-- 収まらない行は切って「…」にします。札の高さを説明に合わせて伸ばすと、
+                       札ごとに高さが変わり、横に並べた意味が無くなります。全文は上のツールチップです。 -->
+                  <TextBlock Grid.Row="2" Text="{Binding Detail}" Style="{StaticResource CardDetail}"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Top" />
+
+                  <TextBlock Grid.Row="3" Text="{Binding Yield}" Margin="0,4,0,0" FontSize="11"
+                             TextWrapping="Wrap" Foreground="#FF6E5A20" />
+                  <TextBlock Grid.Row="4" Text="{Binding Script}" Style="{StaticResource Mono}"
+                             Margin="0,4,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+
+                  <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,8,0,0">
                     <!-- 見積りを持たない道具にボタンを出しても効かないので、持っているものだけ有効にします。 -->
-                    <Button Content="先に数える" Margin="0,0,0,4"
+                    <Button Content="先に数える"
                             Command="{Binding DataContext.PreviewToolCommand,
                                       RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                             CommandParameter="{Binding}"
                             ToolTip="作らずに、何本できて何MBになるかだけ出します。" />
-                    <Button Content="実行" Margin="0,0,0,4"
+                    <Button Content="実行"
                             Command="{Binding DataContext.RunToolCommand,
                                       RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                             CommandParameter="{Binding}"
@@ -226,28 +292,7 @@
                             CommandParameter="{Binding Help}"
                             ToolTip="3つの道具の違いと、出力先・容量の説明を開きます。" />
                   </StackPanel>
-
-                  <!-- 走るのがスクリプトであることを、絵ではなく文字で明示します。 -->
-                  <Border DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,12,0"
-                          VerticalAlignment="Top" CornerRadius="4" Background="#FF2E3324">
-                    <Image Source="{Binding Icon}" Width="30" Height="30" />
-                  </Border>
-
-                  <StackPanel>
-                    <DockPanel>
-                      <Border DockPanel.Dock="Right" Background="#FFE8EAD9" CornerRadius="3"
-                              Padding="6,1" VerticalAlignment="Center" Margin="8,0,0,0">
-                        <TextBlock Text="画面なし" FontSize="10" Foreground="#FF4A5238" />
-                      </Border>
-                      <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" />
-                    </DockPanel>
-                    <TextBlock Text="{Binding Purpose}" Style="{StaticResource CardPurpose}" />
-                    <TextBlock Text="{Binding Detail}" Style="{StaticResource CardDetail}" />
-                    <TextBlock Text="{Binding Yield}" Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
-                               Foreground="#FF6E5A20" />
-                    <TextBlock Text="{Binding Script}" Style="{StaticResource Mono}" Margin="0,4,0,0" />
-                  </StackPanel>
-                </DockPanel>
+                </Grid>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
