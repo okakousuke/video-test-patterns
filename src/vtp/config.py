@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from vtp.pattern_options import describe_pattern_options, validate_pattern_options
+
 # ---------------------------------------------------------------- 語彙の定義
 
 COLOR_MODELS = ("rgb", "ycbcr")
@@ -289,6 +291,16 @@ def validate(cfg: Config, known_patterns: tuple[str, ...]) -> None:
     if "png" in cfg.outputs and cfg.width * cfg.height > 64_000_000:
         raise ConfigError("PNG プレビューには大きすぎるサイズです")
 
+    # --- パターン固有のつまみ
+    #
+    # patterns.py の _opt は options.get なので、ここで見ないと打ち間違いが
+    # そのまま既定値の生成物として出てきます。指定したのに効かない、
+    # という一番たちの悪い失敗の仕方をするので、名前と範囲を確かめます。
+    try:
+        validate_pattern_options(cfg.pattern, cfg.pattern_options)
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
+
 
 def version() -> str:
     """パッケージ版数。循環参照を避けるため、必要になった時点で読みます。"""
@@ -353,6 +365,9 @@ def describe_combinations(known_patterns: tuple[str, ...]) -> dict[str, Any]:
         "outputs": list(OUTPUTS),
         "storages": [{"name": name, "description": spec["description"]} for name, spec in STORAGES.items()],
         "combinations": combinations,
+        # パターンごとのつまみ。読む側（GUI）が自前の表を持たなくて済むよう、
+        # 型・範囲・既定値・説明までここへ入れて渡します。
+        "pattern_options": describe_pattern_options(),
     }
 
 

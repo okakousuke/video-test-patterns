@@ -68,7 +68,10 @@ public sealed class GeneratorViewModel : ObservableObject
             Fill(Storages, _catalog.Combinations.Select(c => c.Storage).Distinct());
             Fill(Alignments, _catalog.Combinations.Select(c => c.Alignment).Distinct());
 
-            StatusText = $"{_catalog.Generator} に接続しました（成立する組み合わせ {_catalog.Combinations.Count} 通り）。";
+            RebuildPatternOptions();
+            StatusText = $"{_catalog.Generator} に接続しました"
+                         + $"（成立する組み合わせ {_catalog.Combinations.Count} 通り、"
+                         + $"つまみを持つパターン {_catalog.PatternOptions.Count} 種）。";
         }
         catch (Exception ex)
         {
@@ -101,7 +104,16 @@ public sealed class GeneratorViewModel : ObservableObject
     // --- 生成条件 ---
 
     private string _pattern = "colorbar";
-    public string Pattern { get => _pattern; set { if (Set(ref _pattern, value)) Revalidate(); } }
+    public string Pattern
+    {
+        get => _pattern;
+        set
+        {
+            if (!Set(ref _pattern, value)) return;
+            RebuildPatternOptions();
+            Revalidate();
+        }
+    }
 
     private int _width = 1920;
     public int Width { get => _width; set { if (Set(ref _width, value)) Revalidate(); } }
@@ -130,9 +142,40 @@ public sealed class GeneratorViewModel : ObservableObject
     private string _alignment = "lsb";
     public string Alignment { get => _alignment; set { if (Set(ref _alignment, value)) Revalidate(); } }
 
-    /// <summary>``KEY=VALUE`` を1行に1つ。パターン固有の指定です。</summary>
-    private string _patternOptions = "";
-    public string PatternOptions { get => _patternOptions; set { if (Set(ref _patternOptions, value)) Revalidate(); } }
+    /// <summary>
+    /// いま選んでいるパターンのつまみです。パターンを変えると総入れ替えになります。
+    ///
+    /// 中身は生成器の `--describe` が渡してきたものだけで、ここには表がありません。
+    /// 生成器へつまみを足せば、この画面は直さなくても出るようになります。
+    /// </summary>
+    public ObservableCollection<PatternOptionRow> PatternOptionRows { get; } = [];
+
+    public bool HasPatternOptions => PatternOptionRows.Count > 0;
+
+    /// <summary>つまみが 1 つも無いパターンのときに出す一言です。</summary>
+    public string PatternOptionNote => _catalog is null
+        ? "生成器へ接続すると、パターンごとの設定がここに出ます。"
+        : $"{_pattern} に固有の設定はありません。";
+
+    /// <summary>パターンが変わったので、つまみを入れ替えます。</summary>
+    private void RebuildPatternOptions()
+    {
+        PatternOptionRows.Clear();
+        if (_catalog is not null)
+        {
+            foreach (var option in _catalog.OptionsFor(_pattern))
+                PatternOptionRows.Add(new PatternOptionRow(option, Revalidate));
+        }
+        Raise(nameof(HasPatternOptions));
+        Raise(nameof(PatternOptionNote));
+    }
+
+    /// <summary>触ったつまみをすべて既定へ戻します。</summary>
+    public void ResetPatternOptions()
+    {
+        foreach (var row in PatternOptionRows) row.Reset();
+        Revalidate();
+    }
 
     private string _outputFolder = "";
     public string OutputFolder { get => _outputFolder; set { if (Set(ref _outputFolder, value)) Revalidate(); } }
@@ -235,6 +278,13 @@ public sealed class GeneratorViewModel : ObservableObject
             Problem = "出力先のフォルダを指定してください。";
             SizeNote = "";
         }
+        else if (PatternOptionRows.FirstOrDefault(r => r.HasProblem) is { } badRow)
+        {
+            // どの欄かを名前で言います。行の下にも同じ理由が出ますが、
+            // 実行できない理由は 1 か所にまとまっていたほうが探さずに済みます。
+            Problem = $"{badRow.Label}（{badRow.Name}）: {badRow.Problem}";
+            SizeNote = "";
+        }
         else
         {
             Problem = "";
@@ -280,18 +330,19 @@ public sealed class GeneratorViewModel : ObservableObject
         // alignment は 16bit コンテナへ 10bit を入れるときだけ効きます。
         if (_bitDepth == 10) { arguments.Add("--alignment"); arguments.Add(_alignment); }
 
-        foreach (var line in ParsePatternOptions())
+        // 触ったつまみだけを載せます。既定のままのものまで書き出すと、
+        // 生成器側で既定を変えたときに古い値へ釘付けしてしまいます。
+        foreach (var argument in ChangedPatternOptions())
         {
             arguments.Add("--pattern-option");
-            arguments.Add(line);
+            arguments.Add(argument);
         }
         return arguments;
     }
 
-    internal IEnumerable<string> ParsePatternOptions() =>
-        (_patternOptions ?? "")
-        .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Where(line => !line.StartsWith('#'));
+    /// <summary>既定から動かしたつまみを ``名前=値`` の形で返します。</summary>
+    internal IEnumerable<string> ChangedPatternOptions() =>
+        PatternOptionRows.Select(row => row.Argument()).OfType<string>();
 
     private string BuildCommandLine()
     {

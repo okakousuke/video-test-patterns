@@ -37,6 +37,82 @@ public sealed record Combination(
 /// 生成の実体も同じ生成器です。ここでやり取りするのは条件だけで、
 /// 画素を作る処理は C# 側に持ちません。
 /// </summary>
+/// <summary>
+/// パターン固有のつまみ 1 つ分です。
+///
+/// 中身は生成器の <c>--describe</c> がそのまま渡してきます。
+/// **この画面は「どのパターンに何のつまみがあるか」を一切持ちません。**
+/// 持つと生成器側へつまみを足したときに二重に直すことになり、必ず片方が古くなります。
+///
+/// <c>Default</c> が null のものは、寸法から決まる（幅・高さで変わる）つまみです。
+/// その求め方は <c>Auto</c> に文章で入っています。
+/// </summary>
+public sealed class PatternOption
+{
+    [JsonPropertyName("name")] public string Name { get; init; } = "";
+    [JsonPropertyName("label")] public string Label { get; init; } = "";
+
+    /// <summary>int / float / bool / choice / ints / floats / color。入力欄の種類を決めます。</summary>
+    [JsonPropertyName("kind")] public string Kind { get; init; } = "";
+
+    [JsonPropertyName("help")] public string Help { get; init; } = "";
+
+    /// <summary>型が混ざる（数値・文字列・真偽・配列・null）ので、生の JSON のまま持ちます。</summary>
+    [JsonPropertyName("default")] public JsonElement Default { get; init; }
+
+    /// <summary>寸法から決まるときの求め方。空なら <c>Default</c> が既定値です。</summary>
+    [JsonPropertyName("auto")] public string Auto { get; init; } = "";
+
+    [JsonPropertyName("minimum")] public double? Minimum { get; init; }
+    [JsonPropertyName("maximum")] public double? Maximum { get; init; }
+    [JsonPropertyName("choices")] public List<string> Choices { get; init; } = [];
+
+    /// <summary>並びの個数が決まっているとき（色なら 3）です。</summary>
+    [JsonPropertyName("length")] public int? Length { get; init; }
+
+    /// <summary>並びを受け取るつまみ（色を含む）かどうかです。</summary>
+    public bool IsList => Kind is "ints" or "floats" or "color";
+
+    /// <summary>整数しか受け取らないかどうかです。</summary>
+    public bool IsInteger => Kind is "int" or "ints";
+
+    /// <summary>既定値を、入力欄へそのまま置ける文字列にします。寸法依存なら空です。</summary>
+    public string DefaultText()
+    {
+        if (Auto.Length > 0) return "";
+        return Default.ValueKind switch
+        {
+            JsonValueKind.Null or JsonValueKind.Undefined => "",
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.String => Default.GetString() ?? "",
+            // 並びは CLI へ渡すときも JSON なので、角括弧のまま見せます。
+            JsonValueKind.Array => "[" + string.Join(", ", Default.EnumerateArray().Select(v => v.ToString())) + "]",
+            _ => Default.ToString(),
+        };
+    }
+
+    /// <summary>入力欄の下に出す、範囲や既定の一言です。</summary>
+    public string Hint()
+    {
+        var parts = new List<string>();
+        if (Auto.Length > 0) parts.Add($"空欄なら寸法から決めます（{Auto}）");
+        else if (DefaultText().Length > 0) parts.Add($"既定 {DefaultText()}");
+
+        if (Minimum is not null && Maximum is not null) parts.Add($"{Trim(Minimum.Value)}〜{Trim(Maximum.Value)}");
+        else if (Minimum is not null) parts.Add($"{Trim(Minimum.Value)} 以上");
+        else if (Maximum is not null) parts.Add($"{Trim(Maximum.Value)} 以下");
+
+        if (Length is not null) parts.Add($"{Length} 個");
+        return string.Join(" / ", parts);
+    }
+
+    private static string Trim(double value) =>
+        value == Math.Floor(value) && Math.Abs(value) < 1e15
+            ? ((long)value).ToString()
+            : value.ToString("0.###");
+}
+
 public sealed class GeneratorCatalog
 {
     [JsonPropertyName("generator")] public string Generator { get; init; } = "";
@@ -45,6 +121,14 @@ public sealed class GeneratorCatalog
     [JsonPropertyName("outputs")] public List<string> Outputs { get; init; } = [];
     [JsonPropertyName("storages")] public List<StorageInfo> Storages { get; init; } = [];
     [JsonPropertyName("combinations")] public List<Combination> Combinations { get; init; } = [];
+
+    /// <summary>パターン名 → そのパターンのつまみ。載っていないパターンにはつまみがありません。</summary>
+    [JsonPropertyName("pattern_options")]
+    public Dictionary<string, List<PatternOption>> PatternOptions { get; init; } = [];
+
+    /// <summary>そのパターンのつまみを返します（無ければ空）。</summary>
+    public IReadOnlyList<PatternOption> OptionsFor(string? pattern) =>
+        pattern is not null && PatternOptions.TryGetValue(pattern, out var list) ? list : [];
 
     /// <summary>その条件で成立する組み合わせを返します（無ければ null）。</summary>
     public Combination? Find(string colorModel, string subsampling, int bitDepth, string storage,

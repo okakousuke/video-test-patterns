@@ -26,6 +26,8 @@ public partial class GeneratorWindow : Window
 
     private async void OnReconnect(object sender, RoutedEventArgs e) => await _viewModel.LoadCatalogAsync();
 
+    private void OnResetPatternOptions(object sender, RoutedEventArgs e) => _viewModel.ResetPatternOptions();
+
     private void OnPickFolder(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog
