@@ -64,7 +64,9 @@ public sealed class MainViewModel : ObservableObject
             {
                 // 生成の窓は Window を作る話なので、画面側に任せます。
                 if (key == "generator") { RequestGenerator?.Invoke(); return; }
-                ShowDashboard = false;
+                // 「RAWを見る」には開く先がまだ無いので、場所を訊きます。
+                // HOME を畳むのは OpenFolder が選ばれたあとにやります。
+                // 先に畳むと、選ぶのをやめたときに空のビューアだけが残ります。
                 OpenFolder();
             },
             document => RequestHelp?.Invoke(document));
@@ -922,15 +924,34 @@ public sealed class MainViewModel : ObservableObject
         _ = Dashboard.RefreshAsync(folder);
     }
 
+    /// <summary>
+    /// 読み込むフォルダを選びます。
+    ///
+    /// フォルダ選択の窓（OpenFolderDialog）は仕様上ファイルを一切出しません。
+    /// 名前だけで選ぶことになり、manifest が入っているのかどうかは開くまで分かりません。
+    /// そこでファイル選択の窓にして、manifest が見える状態で選んでもらいます。
+    /// 読み込むのは選んだ1本ではなく、**そのファイルのあるフォルダ**です
+    /// （従来どおり、その下のサブフォルダも走査します）。
+    /// </summary>
     private void OpenFolder()
     {
-        var dialog = new OpenFolderDialog
+        var dialog = new OpenFileDialog
         {
-            Title = "RAWとmanifestのあるフォルダを選んでください",
+            Title = "読み込みたいフォルダの中の manifest を1つ選んでください（そのフォルダごと読み込みます）",
+            Filter = "manifest (*.manifest.json)|*.manifest.json|JSONファイル (*.json)|*.json|すべてのファイル (*.*)|*.*",
             InitialDirectory = FolderPath.ForDialog(_outputFolder),
+            CheckFileExists = true,
+            Multiselect = false,
         };
         if (dialog.ShowDialog() != true) return;
-        LoadFolder(dialog.FolderName);
+
+        if (Path.GetDirectoryName(dialog.FileName) is not { Length: > 0 } folder)
+        {
+            StatusText = "選んだファイルのフォルダが分かりませんでした。";
+            return;
+        }
+
+        LoadFolder(folder);
         ShowDashboard = false;
     }
 
