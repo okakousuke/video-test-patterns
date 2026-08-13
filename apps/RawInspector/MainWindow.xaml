@@ -436,9 +436,9 @@
                   <ToggleButton Content="格子" Style="{StaticResource ToolToggle}"
                                 IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
                                 IsEnabled="{Binding CanShowPixelGrid}"
-                                ToolTip="画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。600% 以上で使えます。" />
+                                ToolTip="600% 以上に拡大すると押せます。それより下で線を引くと、線のほうが画素より太くなって絵が読めません。／画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。" />
                   <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
-                          ToolTip="一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
+                          ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"
                           ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
                 </StackPanel>

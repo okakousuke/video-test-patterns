@@ -655,6 +655,10 @@ public sealed class MainViewModel : ObservableObject
             SaveAllFormatsCommand.RaiseCanExecuteChanged();
             SaveRawCopyCommand.RaiseCanExecuteChanged();
             ResetInterpretationCommand.RaiseCanExecuteChanged();
+            // 絵が入るまで全画面にする意味はないので HasPreview を条件にしています。
+            // ここで知らせないと、この RelayCommand は CommandManager を見ていないので
+            // 条件を確かめ直す機会が無く、絵を読み込んでもボタンは灰色のままになります。
+            ToggleFullScreenCommand.RaiseCanExecuteChanged();
         }
     }
 

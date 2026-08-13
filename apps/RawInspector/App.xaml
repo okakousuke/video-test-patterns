@@ -41,6 +41,9 @@
 
     <!-- 既定のボタン。角丸と控えめな枠だけにして、色は付けません。 -->
     <Style TargetType="Button" x:Key="FlatButton">
+      <!-- 灰色のボタンほど説明が要ります。既定では無効なコントロールに説明は出ないので、
+           「押せないのはなぜか」を確かめる手立てが無くなります。 -->
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="Padding" Value="10,4" />
       <Setter Property="Margin" Value="0,0,6,0" />
       <Setter Property="MinWidth" Value="64" />
@@ -148,6 +151,7 @@
          排他（RadioButton）にも、組み合わせ（ToggleButton）にも同じ見た目で使えます。
          押せないときは薄くして、押しても効かないことが分かるようにします。 -->
     <Style TargetType="ToggleButton" x:Key="ToolToggle">
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
       <Setter Property="Padding" Value="9,4" />
       <Setter Property="Margin" Value="0,0,4,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
