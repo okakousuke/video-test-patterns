@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>RawInspector</RootNamespace>
+    <AssemblyName>RawInspector</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- 図案は tools/make_icon.py で生成しています（外部素材は使っていません）。 -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- exeのアイコンとは別に、ウィンドウとタスクバーで使うため埋め込みます。 -->
+    <Resource Include="app.ico" />
+    <!-- 虫眼鏡カーソル。tools/make_cursor.py で生成しています。 -->
+    <Resource Include="zoom.cur" />
+    <!-- ダッシュボードのアイコン。128px の PNG を置き、表示側で縮めます。
+         絵文字はフォントに依存して環境で形が変わるので、画像を持ちます。 -->
+    <Resource Include="icons\*.png" />
+  </ItemGroup>
+
+  <!-- 使い方ドキュメント。実体はリポジトリの docs/ 1か所だけです。
+       ここでは実行ファイルの隣へ複製します。ビルド結果のフォルダごと渡された人も、
+       リポジトリを持たずに読めるようにするためです。 -->
+  <ItemGroup>
+    <Content Include="..\..\docs\*.md" Link="docs\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\usage\*.md" Link="docs\usage\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 実行ファイル1つだけを持ち出されたとき用の保険です。全部で数十KBなので、
+       持たせておくほうが「ヘルプが開かない」より良い状態です。
+       LogicalName は HelpLibrary が探す名前と対になっています。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\docs\*.md" LogicalName="docs/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\docs\usage\*.md" LogicalName="docs/usage/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

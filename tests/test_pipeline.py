@@ -176,3 +176,65 @@ def test_cli_list_flags(capsys):
 def test_cli_ten_bit_storages(tmp_path, args):
     rc = main([*args, "--quiet", "--output", str(tmp_path / "x")])
     assert rc == 0
+
+
+def _luma_plane(path, width, height, bit_depth):
+    """RAW の先頭にある Y' プレーンだけを読み出す（planar / nv12 とも先頭は Y'）."""
+    dtype = np.uint8 if bit_depth == 8 else "<u2"
+    return np.fromfile(path, dtype=dtype)[: width * height].reshape(height, width)
+
+
+def test_digitalcard_lsb_band_reads_out_the_bit_depth(tmp_path):
+    """3 番の帯が、経路に実際に残っているビット数を出すこと.
+
+    10bit ぶんの刻みは、8bit の経路を通ると段にならずに潰れる。
+    プレビューは RGB888 なのでどちらでも潰れて見えるが、
+    RAW のコード値を見れば分かれる。ここで見ているのは RAW のほうです。
+    """
+    width, height = 800, 600
+    row = 350
+    eight_bit_side = slice(45, 375)
+    ten_bit_side = slice(425, 755)
+
+    generate(Config(pattern="digitalcard", width=width, height=height,
+                    color_model="ycbcr", subsampling="4:4:4", bit_depth=10,
+                    storage="planar", alignment="lsb", range="limited", matrix="bt709"),
+             tmp_path / "ten")
+    deep = _luma_plane(tmp_path / "ten.raw", width, height, 10)
+
+    generate(Config(pattern="digitalcard", width=width, height=height,
+                    color_model="ycbcr", subsampling="4:2:0", bit_depth=8,
+                    storage="nv12", range="limited", matrix="bt709"),
+             tmp_path / "eight")
+    shallow = _luma_plane(tmp_path / "eight.raw", width, height, 8)
+
+    # 8bit ぶんの刻みは、どちらの経路でも段として残る
+    assert len(np.unique(deep[row, eight_bit_side])) == 8
+    assert len(np.unique(shallow[row, eight_bit_side])) == 8
+
+    # 10bit ぶんの刻みは、10bit の経路でだけ分かれる
+    assert len(np.unique(deep[row, ten_bit_side])) >= 6
+    assert len(np.unique(shallow[row, ten_bit_side])) <= 2
+
+
+def test_digitalcard_chroma_stripes_collapse_in_420_but_luma_stripes_do_not(tmp_path):
+    """1 番の帯で、色差の縞だけが 4:2:0 で潰れること."""
+    width, height = 800, 600
+    res = generate(Config(pattern="digitalcard", width=width, height=height,
+                          color_model="ycbcr", subsampling="4:2:0", bit_depth=8,
+                          storage="nv12", range="limited", matrix="bt709"),
+                   tmp_path / "c")
+    assert res.roundtrip_ok
+
+    from PIL import Image
+    img = np.asarray(Image.open(tmp_path / "c.preview.png").convert("RGB")).astype(int)
+
+    luma = img[130, 40:56]
+    chroma = img[130, 420:436]
+
+    # 白黒の縞は残る（明るさの幅が広いまま）
+    assert luma[:, 0].max() - luma[:, 0].min() > 200
+    # 赤と青は混ざって紫になる。赤成分と青成分の差が小さくなっていること
+    assert {tuple(px) for px in chroma} != {(255, 0, 0), (0, 0, 255)}
+    for pixel in chroma:
+        assert abs(int(pixel[0]) - int(pixel[2])) < 40

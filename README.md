@@ -39,7 +39,22 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | レンズ歪み・射影変換のずれ | `grid`, `circles`, `radial` |
 | 4:2:2 / 4:2:0 の色差劣化 | `hatch` |
 | ドット欠け・画素の欠落 | `dots` |
-| 領域の重複・入れ替わり | `blocks` |
+| 領域の重複・入れ替わり | `blocks`, `checker` |
+| 黒レベルのずれ（黒浮き・黒つぶれ） | `pluge`, `smptebars` |
+| 解像限界・周波数特性 | `multiburst`, `pulsebar` |
+| 縮小・間引きでの折り返し（エイリアス） | `zoneplate` |
+| 白の面積による明るさの変動 | `window` |
+| 色相の連続性・色域 | `rainbow` |
+| 量子化の段差（バンディング） | `shallowramp`, `stepmatrix` |
+| 画素の縦横比 | `square`, `circles` |
+| 向きごとの解像限界 | `wedge`, `siemens`, `linepairs` |
+| 境目の立ち上がり（画素より細かく） | `slantedge` |
+| むら・純度・レベル（形の無い面で） | `raster` |
+| ひととおりまとめて | `testcard`, `geometrycard`, `resolutioncard`, `monoscope` |
+| 伝送そのもの（間引き量・残りビット数・行の抜け） | `digitalcard` |
+| 表示側の伝達特性（ガンマ） | `gamma` |
+| 成分ごと・色ごとの階調の偏り | `colorramp`, `colormatrix` |
+| 平滑化・圧縮の効き方 | `noise` |
 
 ### 作成できるパターン一覧
 
@@ -60,12 +75,69 @@ RAW サイズ: 3110400 バイト（往復確認 OK）
 | `hatch` | [hatch.png](samples/patterns/hatch.png) | 色差サンプリング確認 |
 | `dots` | [dots.png](samples/patterns/dots.png) | ドット欠け・画素欠落確認 |
 | `blocks` | [blocks.png](samples/patterns/blocks.png) | 領域の重複・入れ替わり確認 |
+| `smptebars` | [smptebars.png](samples/patterns/smptebars.png) | 3段構成。色順・青の再現・黒レベルをまとめて確認 |
+| `pluge` | [pluge.png](samples/patterns/pluge.png) | 黒レベル合わせ（黒のすぐ上を刻んだ帯） |
+| `multiburst` | [multiburst.png](samples/patterns/multiburst.png) | 解像限界・周波数特性確認 |
+| `window` | [window.png](samples/patterns/window.png) | 白の面積を変えたときの明るさの追従確認 |
+| `zoneplate` | [zoneplate.png](samples/patterns/zoneplate.png) | 折り返し（エイリアス）確認 |
+| `checker` | [checker.png](samples/patterns/checker.png) | 画素の抜け・反転・領域のずれ確認 |
+| `pulsebar` | [pulsebar.png](samples/patterns/pulsebar.png) | 急な変化とゆるやかな変化の崩れ方の違い |
+| `splitbars` | [splitbars.png](samples/patterns/splitbars.png) | 振幅違いのカラーバーを上下に並べて比較 |
+| `rainbow` | [rainbow.png](samples/patterns/rainbow.png) | 色相の連続性・色域確認 |
+| `sweep` | [sweep.png](samples/patterns/sweep.png) | 解像度の落ち始める位置を連続で確認 |
+| `shallowramp` | [shallowramp.png](samples/patterns/shallowramp.png) | 量子化の段差（バンディング）確認 |
+| `triangleramp` | [triangleramp.png](samples/patterns/triangleramp.png) | 上がりと下がりで挙動が違わないか確認 |
+| `square` | [square.png](samples/patterns/square.png) | 画素の縦横比確認 |
+| `stepmatrix` | [stepmatrix.png](samples/patterns/stepmatrix.png) | 256階調を格子に並べて多階調を面で確認 |
+| `wedge` | [wedge.png](samples/patterns/wedge.png) | 向きごとの解像限界（水平・垂直を分けて確認） |
+| `testcard` | [testcard.png](samples/patterns/testcard.png) | 総合パターン。1枚で画角・縦横比・解像・色順・階調 |
+| `gamma` | [gamma.png](samples/patterns/gamma.png) | 表示側の伝達特性（ガンマ）確認。等倍でのみ成立 |
+| `colorramp` | [colorramp.png](samples/patterns/colorramp.png) | 成分ごとの階調の段差確認 |
+| `colormatrix` | [colormatrix.png](samples/patterns/colormatrix.png) | 色ごとの階調の偏り確認 |
+| `noise` | [noise.png](samples/patterns/noise.png) | 平滑化・圧縮の効き方確認（シード固定で再現） |
+| `barshd` | [barshd.png](samples/patterns/barshd.png) | 4段構成のカラーバー。脇の灰色・逆順帯・ランプ付き |
+| `splitsteps` | [splitsteps.png](samples/patterns/splitsteps.png) | 上下で並びを逆にしたグレーステップ |
+| `geometrycard` | [geometrycard.png](samples/patterns/geometrycard.png) | 幾何確認に寄せたテストカード（格子・円・対角線） |
+| `resolutioncard` | [resolutioncard.png](samples/patterns/resolutioncard.png) | 解像確認に寄せたテストカード（中央＋四隅のくさび） |
+| `siemens` | [siemens.png](samples/patterns/siemens.png) | 放射状のくさび。解像限界と、その先の折り返し確認 |
+| `linepairs` | [linepairs.png](samples/patterns/linepairs.png) | 線幅ごとの縞。どの太さから潰れるかを段で確認 |
+| `slantedge` | [slantedge.png](samples/patterns/slantedge.png) | 傾けた境目。立ち上がりを画素より細かく確認 |
+| `raster` | [raster.png](samples/patterns/raster.png) | 一様な塗り。むら・純度・レベル確認 |
+| `monoscope` | [monoscope.png](samples/patterns/monoscope.png) | 放送系の総合カード。縞に本数（TV本数）を添えた自作構成 |
+| `digitalcard` | [digitalcard.png](samples/patterns/digitalcard.png) | 伝送を見るカード。目盛り・色差の位相・最下位ビットの階段 |
 
-サンプルを再生成する場合は、リポジトリのルートで次を実行します。
+この見本を再生成する場合は、リポジトリのルートで次を実行します。
+出力先は同梱物なので `samples/patterns/` です。
 
 ```sh
 python tools/generate_pattern_samples.py
 ```
+
+置き場は役割で分けています。**作って捨てるものは `generated/`（`.gitignore` の対象）、
+リポジトリに同梱するものは `samples/`** です。
+
+### 参照用の RAW と manifest
+
+[`samples/raw/`](samples/raw/) に、**格納形式を網羅した RAW と manifest** を同梱しています。
+生成器を動かさなくても、読み手側の実装をこのまま試せます。
+
+同じ絵（`colorbar`）を 192 × 144 で全形式へ出したもので、21 組・約 1.7 MB です。
+絵を固定しているのは、形式ごとの違いだけを見るためです。作り直しは次で行えます。
+
+```sh
+python tools/make_reference_raws.py
+```
+
+同梱するものを小さくしているのは容量のためです。同じ 20 形式を実サイズで出すと、
+**HD で 57MB、FHD で 128MB、4K で 511MB** になります。
+実サイズで見たいときは `--size` を指定して、`generated/` 側へ出します。
+
+```sh
+python tools/make_reference_raws.py --size FHD --out generated
+```
+
+ファイル名にサイズは入れません。形式ごとの違いだけを見るためのものなので、
+同じ場所にサイズが混ざっているほうが困ります（同じ名前で上書きされます）。
 
 ### 例: 4:2:0 で色が消えるのを見る
 
@@ -171,6 +243,10 @@ RAW ファイルだけが残ると、後から「どの条件で作ったのか�
 
 ## 使い方
 
+ここから先はコマンドラインの話です。
+画面のほう（[`apps/RawInspector`](apps/RawInspector/)）の操作は [`docs/usage/`](docs/usage/) にあります。
+アプリの `F1` と各画面の「？」から、同じものがアプリの中に出ます。
+
 ### パターンと格納形式の一覧
 
 ```sh
@@ -211,6 +287,20 @@ vtp --list-storages
 
 各形式のバイト配置は [`docs/formats.md`](docs/formats.md) にまとめています。
 
+### 成立する組み合わせを機械が読める形で出す
+
+`--describe` で、成立する組み合わせと幅・高さの倍数を JSON で返します。
+GUI など別の実装が同じ判定を持たずに済ませるためのものです。
+
+```sh
+python -m vtp --describe
+```
+
+この表は規則を書き写したものではなく、`validate()` を実際に通して作っています。
+幅・高さの倍数も、**通る最小の値を探して**求めています
+（制約はどれも「Nの倍数」の形なので、通る最小値がそのまま N です）。
+規則を2か所に書くと片方だけ直したときに黙ってずれるので、正解は `config.py` の1箇所に留めます。
+
 ### 設定ファイル
 
 `configs/` に例を置いています。
@@ -219,6 +309,49 @@ vtp --list-storages
 vtp --config configs/hatch_bt709_10bit_v210.jsonc
 vtp --config configs/colorbar_rgb8.jsonc --width 1280 --height 720   # 上書きも可
 ```
+
+### サンプル一式の生成
+
+全パターンを、格納形式とビット深度を散らした条件で1本ずつ作ります。
+
+```sh
+python tools/make_samples.py            # generated/ へ出力
+python tools/make_samples.py --seed 7   # 別の割り当てにする
+```
+
+画像サイズは、実際に使われている規格の解像度（QCIF / CIF / VGA / SD NTSC / SD PAL / SVGA / XGA /
+HD 720p / SXGA / WXGA / HD+ / FHD / WUXGA / QHD / 4K UHD）から選びます。
+適当な数字にすると「その幅だから起きた不具合」なのか「珍しい幅だから起きた不具合」なのか
+区別が付きません。規格の解像度なら、同じ幅で実機を通したときと突き合わせられます。
+
+どの解像度をどのパターンへ割り当てるかは乱数ですが**シードを固定**しているので、毎回同じになります。
+v210 の幅は6の倍数、mipi10 は各プレーンの幅が4の倍数、というように格納形式ごとの条件があるので、
+その条件を満たす解像度だけを割り当てます。
+
+既定では WUXGA（1920×1200）までです。10bit の 4K は1本で50MB近くになるため、
+使いたいときは `--max-pixels 8294400` を指定してください。
+
+### 条件を振ったサンプルの生成
+
+こちらは逆に、**1つのパターンを条件で振って** 量産します。
+一通り並べたサンプルでは1本ずつしか出ないので、「このサイズだから起きたのか」を確かめられません。
+
+```sh
+python tools/make_variant_raws.py                    # 3群すべて
+python tools/make_variant_raws.py --group cards      # 群を選ぶ
+python tools/make_variant_raws.py --dry-run          # 何を作るかだけ表示
+```
+
+| 群 | 何を振るか | 見たいこと |
+| --- | --- | --- |
+| `raster` | 塗りの色と振幅（15種）＋ 4:4:4 / 4:2:2 / 4:2:0 | むら・純度・レベル。あわせて「一様な面は間引いても変わらない」の確認 |
+| `cards` | `smptebars` `monoscope` `digitalcard` × 規格の解像度（QCIF〜4K UHD） | 幅・高さの端数（7等分の割り切れなさ、色差面の切り上げ）がサイズでどう出るか。`monoscope` は縞に添える本数が高さで決まるので、数字もサイズごとに変わります |
+| `resolution` | 解像系9パターン × 3サイズ × 3形式 | この種の絵は画素数で見え方が決まるので、1サイズでは足りない |
+
+`raster` 群には、同じ赤の塗りを 4:4:4 / 4:2:2 / 4:2:0 で出した3本が入ります。
+一様な面には色差の細かい変化が無いので、この3本は**同じ結果になるはず**です。
+差が出たら、それは間引きの損失ではなく色変換かビット詰めの誤りで、
+間引きのせいにできない絵として切り分けに使えます。
 
 ## テスト
 

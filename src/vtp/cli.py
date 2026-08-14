@@ -16,6 +16,7 @@ from typing import Any, Sequence
 
 from . import __version__
 from .config import (
+    describe_combinations,
     ALIGNMENTS,
     COLOR_MODELS,
     MATRICES,
@@ -104,6 +105,11 @@ def _parser() -> argparse.ArgumentParser:
     g.add_argument(
         "--list-storages", action="store_true", help="格納形式と制約を表示して終了"
     )
+    g.add_argument(
+        "--describe",
+        action="store_true",
+        help="成立する組み合わせと幅・高さの倍数を JSON で表示して終了（GUI など別の実装向け）",
+    )
     return p
 
 
@@ -167,6 +173,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.list_storages:
         print("利用可能な格納形式:")
         print(describe_storages())
+        return 0
+
+    # 別の実装（GUI など）が同じ判定を持たずに済むよう、正解を JSON で渡します。
+    # 規則を書き写させると必ずずれるので、ここから読ませます。
+    if args.describe:
+        print(json.dumps(describe_combinations(PATTERN_NAMES), ensure_ascii=False, indent=2))
         return 0
 
     try:

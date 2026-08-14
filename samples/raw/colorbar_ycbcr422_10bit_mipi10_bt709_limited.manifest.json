@@ -1,0 +1,38 @@
+{
+  "manifest_version": 1,
+  "generator": {
+    "name": "video-test-patterns",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-08-12T08:50:37+00:00",
+  "parameters": {
+    "pattern": "colorbar",
+    "width": 192,
+    "height": 144,
+    "color_model": "ycbcr",
+    "subsampling": "4:2:2",
+    "bit_depth": 10,
+    "range": "limited",
+    "matrix": "bt709",
+    "storage": "mipi10",
+    "alignment": "lsb",
+    "pattern_options": {}
+  },
+  "parameters_sha256": "7076cacba6b3d31b6fec47f588a85ef0629da8dddbf15871694cacddbcd6860f",
+  "raw_bytes": 69120,
+  "files": [
+    {
+      "kind": "png",
+      "path": "colorbar_ycbcr422_10bit_mipi10_bt709_limited.preview.png",
+      "bytes": 445,
+      "sha256": "17667dbee3a3fed01f3d2c6ecee64271eb42a3a16048660440e235dcf9f4cd17"
+    },
+    {
+      "kind": "raw",
+      "path": "colorbar_ycbcr422_10bit_mipi10_bt709_limited.raw",
+      "bytes": 69120,
+      "sha256": "e2343b98c8e071b158a926da3482f41a9c4fbfc924abd5066b8f17af3141fc2b"
+    }
+  ],
+  "roundtrip_verified": true
+}

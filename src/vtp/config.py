@@ -8,9 +8,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from vtp.pattern_options import describe_pattern_options, validate_pattern_options
 
 # ---------------------------------------------------------------- 語彙の定義
 
@@ -287,6 +290,85 @@ def validate(cfg: Config, known_patterns: tuple[str, ...]) -> None:
 
     if "png" in cfg.outputs and cfg.width * cfg.height > 64_000_000:
         raise ConfigError("PNG プレビューには大きすぎるサイズです")
+
+    # --- パターン固有のつまみ
+    #
+    # patterns.py の _opt は options.get なので、ここで見ないと打ち間違いが
+    # そのまま既定値の生成物として出てきます。指定したのに効かない、
+    # という一番たちの悪い失敗の仕方をするので、名前と範囲を確かめます。
+    try:
+        validate_pattern_options(cfg.pattern, cfg.pattern_options)
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
+
+
+def version() -> str:
+    """パッケージ版数。循環参照を避けるため、必要になった時点で読みます。"""
+    from vtp import __version__
+
+    return __version__
+
+
+def describe_combinations(known_patterns: tuple[str, ...]) -> dict[str, Any]:
+    """成立する組み合わせと、そのときの幅・高さの倍数を数え上げる.
+
+    表を書き写すのではなく、``validate`` を実際に通して作ります。
+    別の実装（GUI など）が同じ判定を持ちたくなったときに、規則を写すと必ずずれます。
+    ここから出した結果を読ませれば、正解は ``validate`` の 1 箇所だけになります。
+
+    幅・高さの倍数も、規則を書き出すのではなく**通る最小の値を探して**求めます。
+    制約はどれも「N の倍数」の形なので、通る最小値がそのまま N です。
+    """
+
+    def passes(width: int, height: int, **kwargs: Any) -> bool:
+        try:
+            validate(Config(width=width, height=height, **kwargs), known_patterns)
+        except ConfigError:
+            return False
+        return True
+
+    def smallest(limit: int, probe: Callable[[int], bool]) -> int | None:
+        for value in range(1, limit + 1):
+            if probe(value):
+                return value
+        return None
+
+    combinations: list[dict[str, Any]] = []
+    for color_model in COLOR_MODELS:
+        for subsampling in SUBSAMPLINGS:
+            for bit_depth in BIT_DEPTHS:
+                for storage in STORAGES:
+                    for alignment in ALIGNMENTS:
+                        for range_name in RANGES:
+                            fixed = dict(
+                                color_model=color_model, subsampling=subsampling,
+                                bit_depth=bit_depth, storage=storage,
+                                alignment=alignment, range=range_name,
+                            )
+                            # 高さを十分に割り切れる値へ固定してから、通る最小の幅を探します。
+                            width_multiple = smallest(48, lambda w: passes(w, 48, **fixed))
+                            if width_multiple is None:
+                                continue
+                            height_multiple = smallest(8, lambda h: passes(width_multiple * 8, h, **fixed))
+                            if height_multiple is None:
+                                continue
+                            combinations.append({
+                                **fixed,
+                                "width_multiple": width_multiple,
+                                "height_multiple": height_multiple,
+                            })
+
+    return {
+        "generator": f"video-test-patterns {version()}",
+        "patterns": list(known_patterns),
+        "matrices": list(MATRICES),
+        "outputs": list(OUTPUTS),
+        "storages": [{"name": name, "description": spec["description"]} for name, spec in STORAGES.items()],
+        "combinations": combinations,
+        # パターンごとのつまみ。読む側（GUI）が自前の表を持たなくて済むよう、
+        # 型・範囲・既定値・説明までここへ入れて渡します。
+        "pattern_options": describe_pattern_options(),
+    }
 
 
 def _plane_widths(cfg: Config) -> list[tuple[str, int]]:

@@ -1,0 +1,1023 @@
+<Window x:Class="RawInspector.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:RawInspector.ViewModels"
+        xmlns:local="clr-namespace:RawInspector"
+        Title="RAW Inspector" Icon="app.ico"
+        Height="860" Width="1560" MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True">
+
+  <Window.Resources>
+    <local:BoolToHiddenConverter x:Key="BoolToHidden" />
+
+    <!-- プレビュー背景の市松模様。画像の外側だと分かればよいので、コントラストは低くします。
+         はっきり描くと、見たいパターンより背景のほうが目立ってしまいます。 -->
+    <DrawingBrush x:Key="CheckerBrush" TileMode="Tile" Viewport="0,0,24,24" ViewportUnits="Absolute">
+      <DrawingBrush.Drawing>
+        <DrawingGroup>
+          <GeometryDrawing Brush="#FF2C2E33">
+            <GeometryDrawing.Geometry>
+              <RectangleGeometry Rect="0,0,24,24" />
+            </GeometryDrawing.Geometry>
+          </GeometryDrawing>
+          <GeometryDrawing Brush="#FF313339">
+            <GeometryDrawing.Geometry>
+              <GeometryGroup>
+                <RectangleGeometry Rect="0,0,12,12" />
+                <RectangleGeometry Rect="12,12,12,12" />
+              </GeometryGroup>
+            </GeometryDrawing.Geometry>
+          </GeometryDrawing>
+        </DrawingGroup>
+      </DrawingBrush.Drawing>
+    </DrawingBrush>
+
+    <!-- === 全画面で絵に重ねるものの見た目 ===
+         明るい枠のまま重ねると、絵の隣で浮くだけでなく、
+         周りの明るさに引きずられて色と明るさの判断そのものが狂います。
+         暗く沈めて、絵を読む邪魔にならない濃さにします。 -->
+    <SolidColorBrush x:Key="OverlayFill" Color="#D91A1C21" />
+    <SolidColorBrush x:Key="OverlayStroke" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="OverlayText" Color="#FFEDEFF2" />
+    <SolidColorBrush x:Key="OverlayMutedText" Color="#FF9AA2AE" />
+
+    <Style TargetType="Border" x:Key="OverlayPanel">
+      <Setter Property="Background" Value="{StaticResource OverlayFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OverlayStroke}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="8,6" />
+    </Style>
+
+    <Style TargetType="Button" x:Key="OverlayButton">
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Foreground" Value="{StaticResource OverlayText}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="5" Background="Transparent">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#33FFFFFF" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#55FFFFFF" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#FF6E7480" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 選択中は塗って知らせます。暗い背景では枠線だけだと分かりません。 -->
+    <Style TargetType="ToggleButton" x:Key="OverlayToggle">
+      <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Foreground" Value="{StaticResource OverlayText}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="Chrome" CornerRadius="5" Background="Transparent">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#33FFFFFF" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentFill}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#FF6E7480" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <!-- 拡大縮小はボタンからもキーからも同じ経路（中央を保つ）を通します。 -->
+  <Window.CommandBindings>
+    <CommandBinding Command="NavigationCommands.IncreaseZoom" Executed="OnZoomInExecuted" />
+    <CommandBinding Command="NavigationCommands.DecreaseZoom" Executed="OnZoomOutExecuted" />
+  </Window.CommandBindings>
+
+  <Window.InputBindings>
+    <KeyBinding Modifiers="Control" Key="D1" Command="{Binding SaveImageCommand}" CommandParameter="png" />
+    <KeyBinding Modifiers="Control" Key="D2" Command="{Binding SaveImageCommand}" CommandParameter="jpg" />
+    <KeyBinding Modifiers="Control" Key="D3" Command="{Binding SaveImageCommand}" CommandParameter="tiff" />
+    <KeyBinding Modifiers="Control" Key="D4" Command="{Binding SaveImageCommand}" CommandParameter="bmp" />
+    <KeyBinding Modifiers="Control" Key="D5" Command="{Binding SaveImageCommand}" CommandParameter="gif" />
+    <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenFolderCommand}" />
+    <!-- いま出ている画面の説明を開きます。HOME とビューアで行き先が変わります。 -->
+    <KeyBinding Key="F1" Command="{Binding ShowHelpCommand}" />
+    <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
+    <KeyBinding Key="F11" Command="{Binding ToggleFullScreenCommand}" />
+    <KeyBinding Key="Escape" Command="{Binding ExitFullScreenCommand}" />
+    <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ActualSizeCommand}" />
+    <KeyBinding Modifiers="Control" Key="OemPlus" Command="NavigationCommands.IncreaseZoom" />
+    <KeyBinding Modifiers="Control" Key="Add" Command="NavigationCommands.IncreaseZoom" />
+    <KeyBinding Modifiers="Control" Key="OemMinus" Command="NavigationCommands.DecreaseZoom" />
+    <KeyBinding Modifiers="Control" Key="Subtract" Command="NavigationCommands.DecreaseZoom" />
+  </Window.InputBindings>
+
+  <DockPanel>
+
+    <!-- 上段: フォルダ操作。開くのは左端、出力先は右端へ寄せます。 -->
+    <Border DockPanel.Dock="Top" Padding="8" Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1"
+            Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
+      <DockPanel>
+        <Button DockPanel.Dock="Left" Content="📁 フォルダを開く" Style="{StaticResource AccentButton}"
+                Command="{Binding OpenFolderCommand}"
+                ToolTip="manifestとRAWのあるフォルダを開きます（Ctrl+O）。サブフォルダも走査します。" />
+
+        <!-- 開いたまま作り直せるように。開き直さずに済みます。 -->
+        <Button DockPanel.Dock="Left" Content="⟳" Width="34" MinWidth="34" FontSize="15" Margin="0,0,6,0"
+                Command="{Binding RefreshFolderCommand}"
+                ToolTip="いま開いているフォルダを読み直します（F5）。選んでいたRAWと表示倍率はそのまま保ちます。" />
+
+        <!-- 最初の画面へいつでも戻れるようにします。素材の件数や生成器の状態は、
+             見たくなるのが起動時とはかぎりません。 -->
+        <Button DockPanel.Dock="Left" Content="🏠 ホーム" Margin="0,0,6,0"
+                Command="{Binding ShowDashboardCommand}"
+                ToolTip="最初の画面（素材の状態・生成器・一括生成）へ戻ります。読み込んだ一覧はそのまま残ります。" />
+
+        <!-- 作ってすぐ見る、が1周するように、開く操作の隣へ置きます。 -->
+        <Button DockPanel.Dock="Left" Content="＋ 生成..." Margin="0,0,6,0" Click="OnGenerateClick"
+                ToolTip="パターンを生成します。画素を作るのはPython側の生成器で、ここはその呼び出しです。生成したRAWはこの一覧へ取り込んで選択します。" />
+
+        <!-- 画面に出ているのはRAWそのものではない、という前提の説明がここにあります。
+             ツールチップだけでは項目単位の話しかできません。 -->
+        <Button DockPanel.Dock="Left" Content="？" Width="34" MinWidth="34" Margin="0,0,12,0"
+                Command="{Binding ShowHelpCommand}"
+                ToolTip="この画面の使い方を開きます（F1）。表示条件の切り替えや画素の値の読み方はこちらです。" />
+
+        <!-- 書き出しはすべてここへ集めます。保存先の指定と保存の操作が離れていると、
+             どこへ出るのか分からないまま押すことになります。 -->
+        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="4,0,0,0" MaxWidth="460"
+                   Text="{Binding OutputFolderText}" TextTrimming="CharacterEllipsis"
+                   Foreground="{StaticResource AccentText}" Cursor="Hand"
+                   ToolTip="クリックするとエクスプローラーで開きます。">
+          <TextBlock.InputBindings>
+            <MouseBinding MouseAction="LeftClick" Command="{Binding OpenOutputFolderCommand}" />
+          </TextBlock.InputBindings>
+        </TextBlock>
+
+        <Button DockPanel.Dock="Right" Content="出力先..." Margin="8,0,0,0"
+                Command="{Binding SelectOutputFolderCommand}"
+                ToolTip="画像とRAWの保存先フォルダを変更します。" />
+
+        <Border DockPanel.Dock="Right" Style="{StaticResource ToolGroup}" Margin="0">
+          <StackPanel Orientation="Horizontal">
+            <!-- いちばん長い項目（PNG（可逆・既定））が、右端の矢印にかからない幅にします。 -->
+            <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding SelectedImageFormat}"
+                      Width="164" Margin="0,0,6,0" VerticalAlignment="Center"
+                      ToolTip="保存する圧縮画像の形式です。" />
+            <Button Content="保存..." Style="{StaticResource SaveButton}"
+                    Command="{Binding SaveSelectedFormatCommand}"
+                    ToolTip="選んだ形式で、保存先とファイル名を指定して保存します（Ctrl+1〜Ctrl+5で形式を直接指定）。" />
+            <Button Content="全形式" Style="{StaticResource SaveButton}"
+                    Command="{Binding SaveAllFormatsCommand}"
+                    ToolTip="PNG・JPEG・TIFF・BMP・GIF をまとめて出力先フォルダへ保存します。形式ごとの見え方を並べて比べるとき用です。" />
+            <Button Content="💾 RAWコピー" Style="{StaticResource RawButton}" Margin="0"
+                    Command="{Binding SaveRawCopyCommand}"
+                    ToolTip="選択中のRAWファイルを、変換も圧縮もせずそのまま保存します。左の圧縮画像とは別物です。" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock VerticalAlignment="Center" Margin="4,0,16,0"
+                   Text="{Binding FolderText}" TextTrimming="CharacterEllipsis"
+                   ToolTip="{Binding FolderText}" />
+      </DockPanel>
+    </Border>
+
+    <!-- 下段: ピクセルプローブとステータス。
+         高さを固定し、各欄も固定幅の列に載せます。カーソルを動かすたびに文字数が変わるため、
+         成り行きの幅にすると桁位置や高さが動き、上のプレビュー枠までずれます。
+         プレビュー欄の下ではなくウィンドウ全幅に置いているのは、
+         中央パネルを狭めても欄が入りきるようにするためです。 -->
+    <Border DockPanel.Dock="Bottom" Padding="8,0" Height="40"
+            Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0"
+            Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}"
+            ToolTip="コード値はRAWから読んだ生の値です（10bitなら0-1023のまま）。変換後はmatrixとrangeを適用して8bitへ丸めた値です。">
+      <Grid VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="84" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="210" />
+          <ColumnDefinition Width="54" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="70" />
+          <ColumnDefinition Width="104" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" MinWidth="80" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 色見本。カーソルが外れても枠は残します（消すと幅が詰まって全体がずれるため）。 -->
+        <Border Grid.Column="0" Width="22" Height="22" Margin="0,0,10,0"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                Background="{Binding HoverSwatch}" />
+
+        <TextBlock Grid.Column="1" Text="座標" VerticalAlignment="Center" Margin="0,0,6,0"
+                   Foreground="{StaticResource MutedText}" />
+        <TextBlock Grid.Column="2" Text="{Binding HoverPositionText}" VerticalAlignment="Center"
+                   FontFamily="{StaticResource MonoFont}" TextTrimming="CharacterEllipsis" />
+
+        <Rectangle Grid.Column="3" Width="1" Height="20" Margin="6,0,10,0"
+                   Fill="{StaticResource PanelBorder}" />
+
+        <TextBlock Grid.Column="4" Text="コード値" VerticalAlignment="Center" Margin="0,0,6,0"
+                   Foreground="{StaticResource MutedText}" />
+        <TextBlock Grid.Column="5" Text="{Binding HoverCodeText}" VerticalAlignment="Center"
+                   FontFamily="{StaticResource MonoFont}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="6" Text="{Binding HoverCodeRangeText}" VerticalAlignment="Center"
+                   FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource MutedText}" />
+
+        <Rectangle Grid.Column="7" Width="1" Height="20" Margin="6,0,10,0"
+                   Fill="{StaticResource PanelBorder}" />
+
+        <TextBlock Grid.Column="8" Text="変換後" VerticalAlignment="Center" Margin="0,0,6,0"
+                   Foreground="{StaticResource MutedText}" />
+        <TextBlock Grid.Column="9" Text="{Binding HoverHexText}" VerticalAlignment="Center"
+                   FontFamily="{StaticResource MonoFont}" />
+        <TextBlock Grid.Column="10" Text="{Binding HoverRgbText}" VerticalAlignment="Center"
+                   FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource MutedText}"
+                   TextTrimming="CharacterEllipsis" />
+
+        <Rectangle Grid.Column="11" Width="1" Height="20" Margin="6,0,10,0"
+                   Fill="{StaticResource PanelBorder}" />
+
+        <TextBlock Grid.Column="12" Text="{Binding StatusText}" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusText}"
+                   Foreground="{StaticResource MutedText}" />
+
+        <!-- 8bit の注意と並べます。どちらも「画面に出ているものはRAWそのものではない」話で、
+             読み違えると原因を取り違える点が同じだからです。
+             こちらは条件が揃ったときだけ出ます（縮小中かつ細かい縞を持つパターン）。 -->
+        <TextBlock Grid.Column="13" Text="{Binding ScaleWarningShort}" VerticalAlignment="Center"
+                   Margin="16,0,0,0" TextAlignment="Right" Foreground="#FF8A6D1F" FontWeight="SemiBold"
+                   Visibility="{Binding HasScaleWarning, Converter={StaticResource BoolToVisibility}}"
+                   ToolTip="{Binding ScaleWarningText}" />
+
+        <!-- どのRAWでも変わらない注意なので、ここに出しっぱなしにします。 -->
+        <TextBlock Grid.Column="14" Text="{Binding BitDepthNote}" VerticalAlignment="Center"
+                   Margin="16,0,0,0" TextAlignment="Right" Foreground="{StaticResource MutedText}"
+                   ToolTip="RAWのビット深度に関わらず、画面表示は8bitへ丸めています。" />
+      </Grid>
+    </Border>
+
+    <!-- 本体: 一覧 / プレビュー / 生成条件。
+         最初に出す画面はこの上へ重ねます。切り替えるだけなので、
+         下の一覧やプレビューの状態はそのまま残ります。 -->
+    <Grid>
+    <Grid Visibility="{Binding ShowDashboard, Converter={StaticResource InverseBoolToVisibility}}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="ListColumn" Width="340" MinWidth="240" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" MinWidth="360" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition x:Name="DetailColumn" Width="380" MinWidth="300" />
+      </Grid.ColumnDefinitions>
+
+      <!-- 左: manifest一覧。全画面のあいだは畳みます。 -->
+      <DockPanel Grid.Column="0" Margin="8"
+                 Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Style="{StaticResource SectionHeader}" Margin="0"
+                     Text="manifest一覧" VerticalAlignment="Center" />
+          <!-- パターンが増えると縦に伸びるので、まとめて開閉できるようにします。 -->
+          <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <Button Content="⊟" Width="28" MinWidth="28" Padding="0,2" FontSize="14"
+                    Command="{Binding CollapseAllCommand}"
+                    ToolTip="すべて閉じる（パターン名の見出しだけにします）" />
+            <Button Content="⊞" Width="28" MinWidth="28" Padding="0,2" FontSize="14" Margin="0"
+                    Command="{Binding ExpandAllCommand}"
+                    ToolTip="すべて展開する" />
+          </StackPanel>
+        </Grid>
+
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="色モデル" VerticalAlignment="Center" Margin="0,0,4,0"
+                     ToolTip="RGB系かY'CbCr系かで絞り込みます。" />
+          <ComboBox Grid.Column="1" Margin="0,0,8,0"
+                    ItemsSource="{Binding ColorModelFilters}" SelectedItem="{Binding ColorModelFilter}"
+                    ToolTip="RGB系かY'CbCr系かで一覧を絞り込みます。" />
+          <TextBlock Grid.Column="2" Text="サイズ" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="3" Margin="0,0,6,0"
+                    ItemsSource="{Binding SizeFilters}" SelectedItem="{Binding SizeFilter}"
+                    ToolTip="画像サイズで一覧を絞り込みます。先頭に「〜HD」「〜FHD」「〜4K」の粗い区分があり、その下に実サイズが並びます。" />
+          <!-- 絞ったまま「件数が合わない」と悩まないよう、戻す手段を隣に置きます。 -->
+          <Button Grid.Column="4" Content="解除" Width="46" MinWidth="46" Margin="0"
+                  Command="{Binding ResetFiltersCommand}"
+                  ToolTip="絞り込みを解除して、すべて表示に戻します。" />
+        </Grid>
+
+        <!-- パターンと画素数の比での絞り込み。
+             パターンは42種まで増えたので名前で1つに絞れるように。
+             比は「16:9 だけ見比べる」ような場面のためで、サイズ指定だと1解像度に決め打ちになります。 -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="パターン" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="1" Margin="0,0,8,0"
+                    ItemsSource="{Binding PatternFilters}" SelectedItem="{Binding PatternFilter}"
+                    ToolTip="パターン名で一覧を絞り込みます。並ぶのは、開いているフォルダに実際にあるものだけです。" />
+          <TextBlock Grid.Column="2" Text="比" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="3" Margin="0" MinWidth="76"
+                    ItemsSource="{Binding AspectFilters}" SelectedItem="{Binding AspectFilter}"
+                    ToolTip="画素数の比で絞り込みます（映したときの形ではありません）。横長のものから並びます。" />
+        </Grid>
+
+        <!-- 並び順。名前で並べると 1280x720 が 176x144 より前に来ます（文字として比べるため）。
+             同じパターンを解像度違いで並べたときに大小が読めないので、切り替えられるようにします。 -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="並び" VerticalAlignment="Center" Margin="0,0,4,0" />
+          <ComboBox Grid.Column="1" Margin="0"
+                    ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SortOrder}"
+                    ToolTip="パターンごとの見出しの中の並び順です。解像度順は画素数で比べるので、1280x720 と 1600x900 のように幅だけでは決まらないものも正しく並びます。見出し（パターン名）自体は常に名前順です。" />
+        </Grid>
+
+        <!-- 選択中のパターンが何のための絵かを出します。
+             形だけ見ても目的は分からないので、見るべき場所まで書いておきます。 -->
+        <Border DockPanel.Dock="Bottom" Margin="0,8,0,14" Padding="10,8" Height="200"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+              <TextBlock Text="{Binding PatternBadge}" FontWeight="Bold" Margin="0,0,0,6"
+                         Foreground="{StaticResource AccentText}" TextTrimming="CharacterEllipsis" />
+
+              <TextBlock Text="何を見るためのパターンか" FontWeight="Bold" Margin="0,0,0,2" />
+              <TextBlock Text="{Binding PatternGuide.Purpose}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+              <TextBlock Text="どこを見るか" FontWeight="Bold" Margin="0,0,0,2" />
+              <TextBlock Text="{Binding PatternGuide.HowToRead}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+              <TextBlock Text="パターン固有の指定" FontWeight="Bold" Margin="0,0,0,2" />
+              <TextBlock Text="{Binding PatternGuide.Options}" TextWrapping="Wrap"
+                         FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource MutedText}" />
+            </StackPanel>
+          </ScrollViewer>
+        </Border>
+
+        <TreeView x:Name="ManifestTree" ItemsSource="{Binding Groups}"
+                  SelectedItemChanged="OnManifestSelected"
+                  VirtualizingStackPanel.IsVirtualizing="True">
+          <TreeView.ItemContainerStyle>
+            <Style TargetType="TreeViewItem">
+              <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+              <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+            </Style>
+          </TreeView.ItemContainerStyle>
+          <TreeView.Resources>
+            <!-- 既定のままだと、選択したときにシステムの反転色（白文字）になり、
+                 明るい選択背景の上で文字が読めなくなります。自前の配色を使います。 -->
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FFCFE4FA" />
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FF11223A" />
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FFE3ECF6" />
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FF11223A" />
+            <HierarchicalDataTemplate DataType="{x:Type vm:PatternGroupViewModel}" ItemsSource="{Binding Entries}">
+              <TextBlock Text="{Binding Header}" FontWeight="Bold" />
+            </HierarchicalDataTemplate>
+            <DataTemplate DataType="{x:Type vm:ManifestEntryViewModel}">
+              <TextBlock Text="{Binding Label}" ToolTip="{Binding ToolTip}">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsLoaded}" Value="False">
+                        <Setter Property="Foreground" Value="#FFB00020" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </DataTemplate>
+          </TreeView.Resources>
+        </TreeView>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                    Background="{StaticResource PanelBorder}"
+                    Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}" />
+
+      <!-- 中央: プレビュー。
+           全画面のあいだは、この中の帯（バッジ・RAWの条件・ツールバー・注意）を
+           すべて畳みます。左右の欄を閉じても、ここが残っていると縦に170pxほど
+           持っていかれ、「描画エリアを最大限」になりません。
+           畳んだ操作は、下の浮かせるバーへ移します。 -->
+      <DockPanel Grid.Column="2">
+        <DockPanel.Style>
+          <Style TargetType="DockPanel">
+            <Setter Property="Margin" Value="8" />
+            <Style.Triggers>
+              <!-- 余白も畳みます。8px でも、4辺で16px は絵の取り分です。 -->
+              <DataTrigger Binding="{Binding IsFullScreen}" Value="True">
+                <Setter Property="Margin" Value="0" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </DockPanel.Style>
+
+        <Border DockPanel.Dock="Top" Background="{StaticResource BadgeBackground}"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" Padding="8,4" Margin="0,0,0,4"
+                Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
+          <TextBlock Text="{Binding PatternBadge}" FontWeight="Bold" Foreground="{StaticResource AccentText}" />
+        </Border>
+
+        <!-- RAWに記録されている条件。項目名と値で色を分けます。
+             下に出る絵は変換後なので、こちらが「データそのものの条件」だと分かるよう見出しを付けます。 -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4" CornerRadius="4"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
+          <DockPanel>
+            <Border DockPanel.Dock="Left" Background="{StaticResource AccentFill}" CornerRadius="3"
+                    Padding="6,1" Margin="0,0,10,0" VerticalAlignment="Center">
+              <TextBlock Text="RAWの条件" Foreground="White" FontWeight="Bold" FontSize="11" />
+            </Border>
+            <ItemsControl ItemsSource="{Binding RawSummary}"
+                          ToolTip="RAWに記録されている生成条件です。画面に出ている絵の見た目ではなく、データそのものの条件です。">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                <TextBlock Text="{Binding Label}" Foreground="{StaticResource MutedText}" />
+                <TextBlock Text=":" Foreground="{StaticResource MutedText}" Margin="0,0,4,0" />
+                <TextBlock Text="{Binding Value}" FontWeight="Bold"
+                           Foreground="{StaticResource AccentText}" FontFamily="{StaticResource MonoFont}" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </DockPanel>
+        </Border>
+
+        <!-- プレビュー操作。
+             WrapPanelだと、ウィンドウ幅や隠れているグループの有無で折り返し位置が変わり、
+             同じ場所を押しているつもりで違うボタンを押すことになります。
+             行を固定し、狭いときは折り返さずに横スクロールさせます。 -->
+        <ScrollViewer DockPanel.Dock="Top" Margin="0,0,0,6"
+                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                      Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
+          <StackPanel>
+
+            <!-- 1段目: 操作モードと倍率 -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+              <Border Style="{StaticResource ToolGroup}">
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton Content="↖ 選択" GroupName="Tool" Style="{StaticResource ToolToggle}"
+                               IsChecked="{Binding IsArrowTool, Mode=TwoWay}"
+                               ToolTip="矢印。ドラッグもホイールも意味を変えません（既定）。" />
+                  <RadioButton Content="✋ 移動" GroupName="Tool" Style="{StaticResource ToolToggle}"
+                               IsChecked="{Binding IsHandTool, Mode=TwoWay}"
+                               ToolTip="手のひら。ドラッグで表示位置を動かします。ホイールは通常のスクロールです。" />
+                  <RadioButton Content="🔍 拡大鏡" GroupName="Tool" Style="{StaticResource ToolToggle}" Margin="0"
+                               IsChecked="{Binding IsZoomTool, Mode=TwoWay}"
+                               ToolTip="虫眼鏡。ホイールを回すだけで拡大縮小します（Ctrl不要）。カーソル下の画素は動きません。" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource ToolGroup}" Margin="0">
+                <StackPanel Orientation="Horizontal">
+                  <Button Content="−" Width="32" MinWidth="32" Command="NavigationCommands.DecreaseZoom"
+                          ToolTip="表示倍率を1段階下げます（Ctrl+−）。表示領域の中央は動きません。" />
+                  <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="4"
+                          Background="White" Padding="8,3" Margin="0,0,6,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ScaleText}" MinWidth="52" TextAlignment="Center"
+                               FontFamily="{StaticResource MonoFont}" />
+                  </Border>
+                  <Button Content="＋" Width="32" MinWidth="32" Command="NavigationCommands.IncreaseZoom"
+                          ToolTip="表示倍率を1段階上げます（Ctrl++）。表示領域の中央は動きません。Ctrl+ホイールならカーソル位置が動きません。" />
+                  <Button Content="等倍" Command="{Binding ActualSizeCommand}"
+                          ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
+                  <!-- 拡大が足りないうちは線のほうが画素より太くなるので、押せなくします。 -->
+                  <ToggleButton Content="格子" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
+                                IsEnabled="{Binding CanShowPixelGrid}"
+                                ToolTip="600% 以上に拡大すると押せます。それより下で線を引くと、線のほうが画素より太くなって絵が読めません。／画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。" />
+                  <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
+                  <Button Content="全体表示" Margin="0" Click="OnFitClick"
+                          ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <!-- 2段目: 読み方の設定。
+                 成分はRGBでもY'CbCrでも必ず使うので左端に固定します。
+                 色モデル次第で使えなくなる matrix / range と色差の戻し方は、その右へ置きます。
+                 共通のものを動かない位置に置いておくと、選んだRAWによって探し直さずに済みます。
+                 使えない条件のグループも Hidden で場所を確保し、位置を動かしません。 -->
+            <StackPanel Orientation="Horizontal">
+              <Border Style="{StaticResource ToolGroup}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="成分" VerticalAlignment="Center" Margin="2,0,6,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <!-- 排他ではなく組み合わせて選べます。選ばなかった成分は中立値に置き換えてから変換します
+                       （コード値のORではありません。ORしても意味のある数になりません）。 -->
+                  <ToggleButton Content="{Binding FirstChannelLabel}" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowFirstChannel, Mode=TwoWay}"
+                                ToolTip="第1成分を残します。外すと中立値（Y'なら0.5にあたるコード値、RGBなら0）に置き換えて変換します。" />
+                  <ToggleButton Content="{Binding SecondChannelLabel}" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowSecondChannel, Mode=TwoWay}"
+                                ToolTip="第2成分を残します。外すと中立値（Cbなら振れ0の中央、Gなら0）に置き換えて変換します。4:2:0や4:2:2では、間引かれた粗さがそのまま見えます。" />
+                  <ToggleButton Content="{Binding ThirdChannelLabel}" Style="{StaticResource ToolToggle}"
+                                IsChecked="{Binding ShowThirdChannel, Mode=TwoWay}"
+                                ToolTip="第3成分を残します。外すと中立値（Crなら振れ0の中央、Bなら0）に置き換えて変換します。" />
+                  <ToggleButton Content="コード値" Style="{StaticResource ToolToggle}" Margin="8,0,0,0"
+                                IsChecked="{Binding RawCodeGray, Mode=TwoWay}"
+                                IsEnabled="{Binding CanUseRawCodeGray}"
+                                ToolTip="選んだ成分のコード値を、色変換を通さずそのまま濃淡にします。画面の明るさ＝コード値／最大コード値になるので、面の値をそのまま読めます。成分を1つだけ選んでいるときに使えます。" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource ToolGroup}"
+                      Visibility="{Binding IsYcbcrSelected, Converter={StaticResource BoolToHidden}}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="matrix" VerticalAlignment="Center" Margin="2,0,4,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <ComboBox ItemsSource="{Binding MatrixOptions}" SelectedItem="{Binding SelectedMatrix}"
+                            Width="70" Margin="0,0,8,0" VerticalAlignment="Center"
+                            ToolTip="RGBへ戻すときの変換係数です。manifestと違う値にすると色相と明るさが変わります。" />
+                  <TextBlock Text="range" VerticalAlignment="Center" Margin="0,0,4,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <ComboBox ItemsSource="{Binding RangeOptions}" SelectedItem="{Binding SelectedRange}"
+                            Width="68" Margin="0,0,6,0" VerticalAlignment="Center"
+                            ToolTip="コード値の使用範囲です。manifestと違う値にすると黒浮きや白飛びが出ます。" />
+                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}" Margin="0"
+                          ToolTip="matrix・range・成分・色差の戻し方を、manifestに記録された条件へ戻します。" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource ToolGroup}" Margin="0"
+                      Visibility="{Binding HasSubsampledChroma, Converter={StaticResource BoolToHidden}}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="色差" VerticalAlignment="Center" Margin="2,0,6,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <RadioButton Content="最近傍" GroupName="Upsample" Style="{StaticResource ToolToggle}"
+                               IsChecked="{Binding IsNearestUpsample, Mode=TwoWay}"
+                               ToolTip="格納されている色差をそのまま複製します（生成側と同じ）。間引かれた粗さが四角として見えます。" />
+                  <RadioButton Content="バイリニア" GroupName="Upsample" Style="{StaticResource ToolToggle}" Margin="0"
+                               IsChecked="{Binding IsBilinearUpsample, Mode=TwoWay}"
+                               ToolTip="隣り合う色差サンプルの間を線形に補間します。境界がなだらかになります。" />
+                </StackPanel>
+              </Border>
+
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- 縮小表示そのものが出している嘘。絵のすぐ上に置きます。
+             ステータス行にも同じことを短く出していますが、折り返しは
+             「説明を読みに行こう」と思う前に誤解が終わってしまいます。
+             冗長でも、絵の隣で目に入る位置に置きます。 -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,4" Padding="8,5" CornerRadius="4"
+                Background="#FFFDF6E3" BorderBrush="#FFE0C88A" BorderThickness="1">
+          <!-- 全画面では帯ごと畳み、同じ注意を絵の左上へ小さく重ねます（下の浮かせる層）。
+               ここに残すと、注意が出た瞬間だけ絵の高さが変わってしまいます。 -->
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Visibility" Value="Collapsed" />
+              <Style.Triggers>
+                <MultiDataTrigger>
+                  <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding HasScaleWarning}" Value="True" />
+                    <Condition Binding="{Binding IsFullScreen}" Value="False" />
+                  </MultiDataTrigger.Conditions>
+                  <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="⚠" FontSize="14" Margin="0,0,8,0"
+                       VerticalAlignment="Top" Foreground="#FF8A6D1F" />
+            <Button DockPanel.Dock="Right" Content="等倍にする" Margin="8,0,0,0"
+                    VerticalAlignment="Top" Command="{Binding ActualSizeCommand}"
+                    ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
+            <TextBlock Text="{Binding ScaleWarningText}" TextWrapping="Wrap"
+                       FontSize="11" Foreground="#FF6B5514" />
+          </DockPanel>
+        </Border>
+
+        <!-- キャンバス -->
+        <Border BorderBrush="{StaticResource PanelBorder}">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="BorderThickness" Value="1" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFullScreen}" Value="True">
+                  <Setter Property="BorderThickness" Value="0" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <Grid x:Name="CanvasLayer" MouseMove="OnCanvasMouseMove">
+            <ScrollViewer x:Name="PreviewScroll"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          Background="{StaticResource CheckerBrush}"
+                          PreviewMouseWheel="OnPreviewWheel"
+                          PreviewMouseLeftButtonDown="OnPreviewLeftButtonDown"
+                          PreviewMouseLeftButtonUp="OnPreviewLeftButtonUp"
+                          MouseMove="OnPreviewScrollMouseMove"
+                          SizeChanged="OnScrollSizeChanged">
+              <!-- 画像の外周に細い線を引きます。背景が暗いので、
+                   黒いパターンだと画像の端が背景と見分けられなくなるためです。 -->
+              <Border x:Name="PreviewFrame" HorizontalAlignment="Center" VerticalAlignment="Center"
+                      BorderBrush="#FF6E7480" BorderThickness="1">
+              <Grid>
+              <Image x:Name="PreviewImageElement"
+                     Source="{Binding PreviewImage}"
+                     Width="{Binding ScaledWidth}" Height="{Binding ScaledHeight}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     RenderOptions.BitmapScalingMode="NearestNeighbor"
+                     RenderOptions.EdgeMode="Aliased"
+                     MouseMove="OnPreviewMouseMove"
+                     MouseLeave="OnPreviewMouseLeave"
+                     PreviewMouseRightButtonDown="OnPreviewRightButtonDown">
+                <Image.ContextMenu>
+                  <!-- ContextMenu は視覚ツリーの外に出るため、DataContext を明示的に引き継ぎます。 -->
+                  <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
+                                             RelativeSource={RelativeSource Self}}">
+                    <!-- 各項目には「実際にコピーされる文字列」をそのまま並べます。
+                         名前だけでは何が取れるのか分からないためです。 -->
+                    <MenuItem Header="この画素をコピー" IsEnabled="False" />
+                    <Separator />
+
+                    <MenuItem Command="{Binding CopySampleCommand}" CommandParameter="hex"
+                              ToolTip="変換後の表示色を #RRGGBB で取得します。matrixとrangeを適用し、8bitへ丸めた後の値です。">
+                      <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="HEX" Width="96" />
+                          <TextBlock Text="{Binding SampleHexText}" FontFamily="{StaticResource MonoFont}"
+                                     Foreground="{StaticResource AccentText}" />
+                        </StackPanel>
+                      </MenuItem.Header>
+                    </MenuItem>
+
+                    <MenuItem Command="{Binding CopySampleCommand}" CommandParameter="rgb"
+                              ToolTip="変換後の表示色を R, G, B の10進で取得します。8bitへ丸めた後の値です。">
+                      <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="RGB 値" Width="96" />
+                          <TextBlock Text="{Binding SampleRgbText}" FontFamily="{StaticResource MonoFont}"
+                                     Foreground="{StaticResource AccentText}" />
+                        </StackPanel>
+                      </MenuItem.Header>
+                    </MenuItem>
+
+                    <MenuItem Command="{Binding CopySampleCommand}" CommandParameter="code"
+                              ToolTip="RAWから読んだ生の値です。変換していません。10bitなら 0-1023 のまま取得します。4:2:0 / 4:2:2 の Cb・Cr は、その画素が共有している間引き後のサンプルです。">
+                      <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="生コード値" Width="96" />
+                          <TextBlock Text="{Binding SampleCodeText}" FontFamily="{StaticResource MonoFont}"
+                                     Foreground="{StaticResource AccentText}" />
+                        </StackPanel>
+                      </MenuItem.Header>
+                    </MenuItem>
+
+                    <MenuItem Command="{Binding CopySampleCommand}" CommandParameter="xy"
+                              ToolTip="画素の座標を x, y で取得します。左上が (0, 0) です。">
+                      <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="座標" Width="96" />
+                          <TextBlock Text="{Binding SamplePositionText}" FontFamily="{StaticResource MonoFont}"
+                                     Foreground="{StaticResource AccentText}" />
+                        </StackPanel>
+                      </MenuItem.Header>
+                    </MenuItem>
+
+                    <Separator />
+
+                    <MenuItem Command="{Binding CopySampleCommand}" CommandParameter="all"
+                              ToolTip="座標・生コード値・変換後の色をまとめて1行で取得します。記事やテストコードへ貼るとき用です。">
+                      <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="まとめて1行" Width="96" />
+                          <TextBlock Text="{Binding SampleFullText}" FontFamily="{StaticResource MonoFont}"
+                                     Foreground="{StaticResource AccentText}" />
+                        </StackPanel>
+                      </MenuItem.Header>
+                    </MenuItem>
+                  </ContextMenu>
+                </Image.ContextMenu>
+              </Image>
+
+              <!-- 画素の境目。画像とぴったり重ねるので、大きさは画像と同じ束縛にします。
+                   IsHitTestVisible を切っているのは、下の画像のマウス操作を邪魔しないためです
+                   （ここで受けてしまうと、プローブも右クリックも効かなくなります）。
+                   線そのものは拡大率に合わせてコード側で作ります（MainWindow.xaml.cs）。 -->
+              <Rectangle x:Name="PixelGridOverlay"
+                         Width="{Binding ScaledWidth}" Height="{Binding ScaledHeight}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         IsHitTestVisible="False"
+                         SnapsToDevicePixels="True"
+                         Visibility="{Binding IsPixelGridVisible, Converter={StaticResource BoolToVisibility}}" />
+              </Grid>
+              </Border>
+            </ScrollViewer>
+
+            <!-- manifestと違う条件で見ているときの警告。キャンバスへ重ねて出します。
+                 ツールバーの中に置くと、出たり消えたりするたびに枠の高さが変わってしまいます。 -->
+            <Border VerticalAlignment="Top" HorizontalAlignment="Stretch" Margin="8" Padding="10,6"
+                    CornerRadius="4" Background="#F0FFF4E5" BorderBrush="#FFE0B77A" BorderThickness="1"
+                    Visibility="{Binding IsInterpretationOverridden, Converter={StaticResource BoolToVisibility}}">
+              <TextBlock Text="{Binding OverrideWarning}" TextWrapping="Wrap" Foreground="#FF7A4E00" />
+            </Border>
+
+            <TextBlock Text="{Binding UnsupportedMessage}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       MaxWidth="520" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="#FFE8E8E8" FontSize="13">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Setter Property="Visibility" Value="Visible" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding UnsupportedMessage}" Value="">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+
+            <!-- ============ 全画面のときだけ、絵の上に浮かせる層 ============
+                 Grid へ重ねるので、レイアウト上の場所は取りません。
+                 つまり、この3つを足しても絵の面積は1画素も減りません。
+                 畳んだツールバーの代わりなので、操作の中身は上と同じものです。 -->
+
+            <!-- 左上: いま何を見ているか。
+                 枠を全部畳むと、絵だけでは「どのパターンをどの倍率で見ているか」が
+                 画面のどこにも無くなります。動画プレイヤーと同じで、
+                 マウスを動かすと出て、しばらく静止すると消えます。 -->
+            <StackPanel x:Name="FullScreenInfoLayer" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="12" IsHitTestVisible="False"
+                        Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}">
+              <Border Style="{StaticResource OverlayPanel}" Padding="10,5" HorizontalAlignment="Left">
+                <TextBlock Text="{Binding FullScreenInfo}" FontSize="12"
+                           Foreground="{StaticResource OverlayText}"
+                           FontFamily="{StaticResource MonoFont}" />
+              </Border>
+
+              <!-- 縮小中の折り返しは、全画面でこそ誤解が起きます。
+                   周りの帯を畳んだぶん、絵しか手がかりが無くなるためです。
+                   通常画面の帯と同じことを、消えない札として重ねます。 -->
+              <Border Style="{StaticResource OverlayPanel}" Padding="10,5" Margin="0,6,0,0"
+                      HorizontalAlignment="Left" Background="#E6704A00" BorderBrush="#66FFD08A"
+                      Visibility="{Binding HasScaleWarning, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding ScaleWarningShort}" FontSize="12" Foreground="#FFFFE9C4" />
+              </Border>
+            </StackPanel>
+
+            <!-- 左下: 指している画素。
+                 動かすたびに出したり消したりすると絵の端がちらつくので、
+                 カーソルが画素の上にある間は静止しても消しません。
+                 ここを読んでいる最中に消えるのが、いちばん困る消え方です。
+                 カーソルが札に近づいたら、反対側の隅へ逃がします（下の code-behind）。 -->
+            <Border x:Name="FullScreenProbe"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="12" Padding="8,4" CornerRadius="6" IsHitTestVisible="False">
+              <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource OverlayPanel}">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                  <Style.Triggers>
+                    <MultiDataTrigger>
+                      <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsFullScreen}" Value="True" />
+                        <Condition Binding="{Binding IsProbeActive}" Value="True" />
+                      </MultiDataTrigger.Conditions>
+                      <Setter Property="Visibility" Value="Visible" />
+                    </MultiDataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </Border.Style>
+              <StackPanel Orientation="Horizontal">
+                <Border Width="12" Height="12" Margin="0,0,8,0" CornerRadius="2"
+                        BorderBrush="{StaticResource OverlayStroke}" BorderThickness="1"
+                        Background="{Binding HoverSwatch}" />
+                <TextBlock Text="{Binding HoverPositionText}" FontSize="11"
+                           FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource OverlayText}" />
+                <TextBlock Text="{Binding HoverCodeText}" FontSize="11" Margin="10,0,0,0"
+                           FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource OverlayText}" />
+                <TextBlock Text="{Binding HoverHexText}" FontSize="11" Margin="10,0,0,0"
+                           FontFamily="{StaticResource MonoFont}"
+                           Foreground="{StaticResource OverlayMutedText}" />
+              </StackPanel>
+            </Border>
+
+            <!-- 下中央: 操作。動画プレイヤーと同じ場所と同じ消え方にします。
+                 中身は畳んだツールバーのうち、絵を見ながら使うものだけです。
+                 読み方の設定（成分・matrix・range・色差）は、比べながら決めるものなので
+                 全画面には持ってきません。Esc で戻ってから使います。 -->
+            <Border x:Name="FullScreenBar" Style="{StaticResource OverlayPanel}"
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,20"
+                    Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}">
+              <StackPanel Orientation="Horizontal">
+                <RadioButton Content="↖" GroupName="ToolOverlay" Style="{StaticResource OverlayToggle}"
+                             IsChecked="{Binding IsArrowTool, Mode=TwoWay}"
+                             ToolTip="矢印。ドラッグもホイールも意味を変えません（既定）。" />
+                <RadioButton Content="✋" GroupName="ToolOverlay" Style="{StaticResource OverlayToggle}"
+                             IsChecked="{Binding IsHandTool, Mode=TwoWay}"
+                             ToolTip="手のひら。ドラッグで表示位置を動かします。" />
+                <RadioButton Content="🔍" GroupName="ToolOverlay" Style="{StaticResource OverlayToggle}"
+                             IsChecked="{Binding IsZoomTool, Mode=TwoWay}"
+                             ToolTip="虫眼鏡。ホイールを回すだけで拡大縮小します（Ctrl不要）。" />
+
+                <Rectangle Width="1" Height="18" Margin="6,0,6,0" Fill="{StaticResource OverlayStroke}" />
+
+                <Button Content="−" Style="{StaticResource OverlayButton}" MinWidth="30"
+                        Command="NavigationCommands.DecreaseZoom"
+                        ToolTip="表示倍率を1段階下げます（Ctrl+−）。" />
+                <TextBlock Text="{Binding ScaleText}" MinWidth="54" TextAlignment="Center"
+                           VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}"
+                           Foreground="{StaticResource OverlayText}" />
+                <Button Content="＋" Style="{StaticResource OverlayButton}" MinWidth="30"
+                        Command="NavigationCommands.IncreaseZoom"
+                        ToolTip="表示倍率を1段階上げます（Ctrl++）。" />
+                <Button Content="等倍" Style="{StaticResource OverlayButton}"
+                        Command="{Binding ActualSizeCommand}"
+                        ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
+                <Button Content="全体表示" Style="{StaticResource OverlayButton}" Click="OnFitClick"
+                        ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
+                <ToggleButton Content="格子" Style="{StaticResource OverlayToggle}"
+                              IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
+                              IsEnabled="{Binding CanShowPixelGrid}"
+                              ToolTip="600% 以上に拡大すると押せます。画素の境目に線を引きます。" />
+
+                <Rectangle Width="1" Height="18" Margin="6,0,6,0" Fill="{StaticResource OverlayStroke}" />
+
+                <Button Content="⛶ 終了" Style="{StaticResource OverlayButton}" Margin="0"
+                        Command="{Binding ExitFullScreenCommand}"
+                        ToolTip="全画面をやめて、元の画面に戻ります（F11 / Esc）。" />
+              </StackPanel>
+            </Border>
+          </Grid>
+        </Border>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
+                    Background="{StaticResource PanelBorder}"
+                    Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}" />
+
+      <!-- 右: 生成条件とプレビューの作り方。全画面のあいだは畳みます。 -->
+      <DockPanel Grid.Column="4" Margin="8"
+                 Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
+
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Style="{StaticResource SectionHeader}"
+                     Text="RAWに記録された生成条件" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Content="既定に戻す" Margin="0" Click="OnResetParameterViewClick"
+                  ToolTip="列の表示と並び替えを、最初の状態へ戻します。" />
+        </Grid>
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+          <TextBlock Text="表示する列:" VerticalAlignment="Center" Margin="0,0,10,0"
+                     Foreground="{StaticResource MutedText}" />
+          <CheckBox x:Name="ShowNameColumn" Content="項目" IsChecked="True" Margin="0,0,12,0"
+                    VerticalAlignment="Center" Checked="OnColumnToggled" Unchecked="OnColumnToggled"
+                    ToolTip="日本語の項目名の列です。" />
+          <CheckBox x:Name="ShowValueColumn" Content="値" IsChecked="True" Margin="0,0,12,0"
+                    VerticalAlignment="Center" Checked="OnColumnToggled" Unchecked="OnColumnToggled"
+                    ToolTip="manifestに記録されている値の列です。" />
+          <!-- manifestキーは、CLIや生成器と突き合わせるとき以外は要らないので既定でオフです。 -->
+          <CheckBox x:Name="ShowKeyColumn" Content="manifestキー" IsChecked="False"
+                    VerticalAlignment="Center" Checked="OnColumnToggled" Unchecked="OnColumnToggled"
+                    ToolTip="JSON上のキー名の列です。生成器やCLIの指定と突き合わせるときに使います。" />
+        </StackPanel>
+
+        <!-- 表は内容ぶんだけの高さにして上へ詰めます。
+             引き伸ばすと、下の説明欄が画面の底へ追いやられて遠くなります。 -->
+        <DataGrid x:Name="ParameterGrid" DockPanel.Dock="Top" MaxHeight="430"
+                  ItemsSource="{Binding Parameters}" SelectedItem="{Binding SelectedParameter}"
+                  AutoGenerateColumns="False" IsReadOnly="True"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  SelectionMode="Single" SelectionUnit="FullRow"
+                  CanUserAddRows="False" CanUserResizeRows="False" CanUserSortColumns="True"
+                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                  ToolTip="列見出しを押すと昇順・降順で並び替えられます。「既定に戻す」で元の並びへ戻せます。">
+          <DataGrid.Resources>
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FFCFE4FA" />
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FF11223A" />
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FFE3ECF6" />
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FF11223A" />
+          </DataGrid.Resources>
+          <DataGrid.Columns>
+            <!-- 項目名の列は薄く塗って、値の列と見分けられるようにします。 -->
+            <DataGridTextColumn x:Name="NameColumn" Header="項目" Binding="{Binding Name}" Width="Auto">
+              <DataGridTextColumn.CellStyle>
+                <Style TargetType="DataGridCell">
+                  <Setter Property="Background" Value="{StaticResource RowHeaderFill}" />
+                  <Setter Property="BorderThickness" Value="0" />
+                  <Setter Property="Padding" Value="6,2" />
+                </Style>
+              </DataGridTextColumn.CellStyle>
+            </DataGridTextColumn>
+            <DataGridTextColumn x:Name="ValueColumn" Header="値" Binding="{Binding Value}" Width="*">
+              <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock">
+                  <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                  <Setter Property="ToolTip" Value="{Binding Value}" />
+                </Style>
+              </DataGridTextColumn.ElementStyle>
+            </DataGridTextColumn>
+            <DataGridTextColumn x:Name="KeyColumn" Header="manifestキー" Binding="{Binding EnglishName}" Width="Auto">
+              <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock">
+                  <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+                  <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+                </Style>
+              </DataGridTextColumn.ElementStyle>
+            </DataGridTextColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 高さを固定します。説明の行数で枠が伸び縮みすると、
+             項目を選ぶたびに下のパネルまで動いてしまいます。 -->
+        <Border DockPanel.Dock="Top" Margin="0,8,0,0" Padding="10,8" Height="132"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="この項目の意味" FontWeight="Bold" Margin="0,0,0,4" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <TextBlock Text="{Binding ParameterHelp}" TextWrapping="Wrap" VerticalAlignment="Top" />
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+
+        <!-- いま見えている絵がどう作られたか。RAWそのものではないことを明示します。 -->
+        <!-- ここだけ他のパネルと色を変えます。
+             「いま見えているものはRAWではない」という注意書きなので、
+             他の情報と同じ見た目だと読み飛ばされます。 -->
+        <Border Margin="0,8,0,0" Padding="10,8" CornerRadius="4"
+                Background="#FFFFFAE8" BorderBrush="#FFE3C775" BorderThickness="2">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="⚠ 表示中の絵の作り方（RAWそのものではありません）"
+                       FontWeight="Bold" Margin="0,0,0,6" Foreground="#FF8A5A00" TextWrapping="Wrap" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <TextBlock Text="{Binding PreviewRecipe}" TextWrapping="Wrap"
+                         FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="#FF4A3A12" />
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+      </DockPanel>
+
+    </Grid>
+
+    <local:DashboardView DataContext="{Binding Dashboard}"
+                         Visibility="{Binding DataContext.ShowDashboard,
+                                      RelativeSource={RelativeSource AncestorType=Window},
+                                      Converter={StaticResource BoolToVisibility}}" />
+    </Grid>
+  </DockPanel>
+</Window>

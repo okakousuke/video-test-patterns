@@ -1,0 +1,98 @@
+<Window x:Class="RawInspector.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="使い方" Icon="app.ico"
+        Height="820" Width="1040" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WindowBackground}">
+
+  <!-- 読みながら本体を触れるように、この窓はモーダルにしません（ShowDialog ではなく Show）。
+       条件を変えながら説明を確かめる、という読み方ができなくなるためです。 -->
+
+  <Window.InputBindings>
+    <KeyBinding Key="Escape" Command="Close" />
+  </Window.InputBindings>
+  <Window.CommandBindings>
+    <CommandBinding Command="Close" Executed="OnCloseExecuted" />
+  </Window.CommandBindings>
+
+  <DockPanel>
+
+    <!-- 上の帯。本体のビューアとは別の窓であることが分かるよう、ホーム画面と同じ色にします。 -->
+    <Border DockPanel.Dock="Top" Background="#FF20293A" Padding="20,12">
+      <StackPanel>
+        <TextBlock Text="映像テストパターン" Foreground="#FF8FA6C8" FontSize="11" />
+        <TextBlock Text="使い方" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,-1,0,0" />
+      </StackPanel>
+    </Border>
+
+    <!-- 下の帯。いまどのファイルを読んでいるのかを常に出します。
+         同じ内容が3か所（リポジトリ・実行ファイルの隣・埋め込み）にありうるので、
+         どれを見ているのか分からないと、直したはずの記述が出ない理由を追えません。 -->
+    <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0" Padding="20,6">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" x:Name="OpenSourceButton" Content="元のファイルを開く"
+                Margin="12,0,0,0" Click="OnOpenSource"
+                ToolTip="この文書の元ファイルをエクスプローラーで選択表示します。" />
+        <TextBlock DockPanel.Dock="Left" Text="出どころ" Foreground="{StaticResource MutedText}"
+                   FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
+        <TextBlock x:Name="SourceText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                   FontFamily="{StaticResource MonoFont}" FontSize="11"
+                   Foreground="{StaticResource MutedText}" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+      </DockPanel>
+    </Border>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="232" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" MinWidth="420" />
+      </Grid.ColumnDefinitions>
+
+      <!-- 目次。使い方と仕様は役割が違うので、見出しを付けて分けます。 -->
+      <ListBox x:Name="ContentsList" Grid.Column="0" BorderThickness="0" Margin="8"
+               Background="Transparent" HorizontalContentAlignment="Stretch"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               SelectionChanged="OnContentsSelected">
+        <ListBox.Resources>
+          <!-- 既定のままだとシステムの反転色（白文字）になり、明るい選択背景の上で読めません。 -->
+          <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FFCFE4FA" />
+          <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FF11223A" />
+          <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FFE3ECF6" />
+          <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FF11223A" />
+        </ListBox.Resources>
+        <ListBox.GroupStyle>
+          <GroupStyle>
+            <GroupStyle.HeaderTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="Bold" Margin="6,10,0,4"
+                           Foreground="{StaticResource MutedText}" />
+              </DataTemplate>
+            </GroupStyle.HeaderTemplate>
+          </GroupStyle>
+        </ListBox.GroupStyle>
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="2,4,2,5">
+              <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding Summary}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                         Foreground="{StaticResource MutedText}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                    Background="{StaticResource PanelBorder}" />
+
+      <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource PanelBorder}"
+              BorderThickness="1,0,0,0">
+        <!-- 選んでコピーできるようにしてあります。コマンドを貼って使う場面があるためです。 -->
+        <FlowDocumentScrollViewer x:Name="Viewer" IsToolBarVisible="False"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled" />
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>

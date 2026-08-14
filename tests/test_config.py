@@ -119,3 +119,81 @@ def test_rgb_manifest_records_matrix_as_null():
     """RGB のままなら matrix は使っていない。null として残す."""
     assert Config(color_model="rgb").to_dict()["matrix"] is None
     assert Config(color_model="ycbcr", matrix="bt601").to_dict()["matrix"] == "bt601"
+
+
+def test_describe_lists_only_combinations_that_validate():
+    """数え上げた組み合わせが、実際に validate を通ること."""
+    from vtp.config import Config, describe_combinations, validate
+    from vtp.patterns import PATTERN_NAMES
+
+    described = describe_combinations(PATTERN_NAMES)
+    assert described["combinations"]
+
+    for entry in described["combinations"]:
+        cfg = Config(
+            width=entry["width_multiple"] * 8,
+            height=entry["height_multiple"] * 8,
+            color_model=entry["color_model"],
+            subsampling=entry["subsampling"],
+            bit_depth=entry["bit_depth"],
+            storage=entry["storage"],
+            alignment=entry["alignment"],
+            range=entry["range"],
+        )
+        validate(cfg, PATTERN_NAMES)  # 例外が出れば失敗
+
+
+def test_describe_multiples_are_the_smallest_that_pass():
+    """幅・高さの倍数が、それ未満では通らない値であること."""
+    from vtp.config import Config, ConfigError, describe_combinations, validate
+    from vtp.patterns import PATTERN_NAMES
+
+    for entry in describe_combinations(PATTERN_NAMES)["combinations"]:
+        wm, hm = entry["width_multiple"], entry["height_multiple"]
+        if wm == 1 and hm == 1:
+            continue
+
+        common = dict(
+            color_model=entry["color_model"], subsampling=entry["subsampling"],
+            bit_depth=entry["bit_depth"], storage=entry["storage"],
+            alignment=entry["alignment"], range=entry["range"],
+        )
+        # 倍数から 1 引いた幅・高さは通らない
+        if wm > 1:
+            with pytest.raises(ConfigError):
+                validate(Config(width=wm * 8 - 1, height=hm * 8, **common), PATTERN_NAMES)
+        if hm > 1:
+            with pytest.raises(ConfigError):
+                validate(Config(width=wm * 8, height=hm * 8 - 1, **common), PATTERN_NAMES)
+
+
+def test_describe_covers_the_known_awkward_formats():
+    """v210 と mipi10 の幅の条件が、表ではなく探索で出ていること."""
+    from vtp.config import describe_combinations
+    from vtp.patterns import PATTERN_NAMES
+
+    combinations = describe_combinations(PATTERN_NAMES)["combinations"]
+    by = {(c["storage"], c["subsampling"]): c for c in combinations}
+
+    assert by[("v210", "4:2:2")]["width_multiple"] == 6
+    assert by[("mipi10", "4:4:4")]["width_multiple"] == 4
+    assert by[("mipi10", "4:2:0")]["width_multiple"] == 8   # 色差面が半分になるため
+    assert by[("mipi10", "4:2:0")]["height_multiple"] == 2
+    assert by[("nv12", "4:2:0")]["width_multiple"] == 2
+
+
+def test_describe_excludes_combinations_that_cannot_exist():
+    """成立しないものが表に載っていないこと."""
+    from vtp.config import describe_combinations
+    from vtp.patterns import PATTERN_NAMES
+
+    combinations = describe_combinations(PATTERN_NAMES)["combinations"]
+
+    # RGB に色差の間引きは無い
+    assert not [c for c in combinations if c["color_model"] == "rgb" and c["subsampling"] != "4:4:4"]
+    # RGB は full range のみ
+    assert not [c for c in combinations if c["color_model"] == "rgb" and c["range"] != "full"]
+    # p010 は上位詰めが定義
+    assert not [c for c in combinations if c["storage"] == "p010" and c["alignment"] != "msb"]
+    # nv12 は 8bit の 4:2:0 だけ
+    assert not [c for c in combinations if c["storage"] == "nv12" and c["bit_depth"] != 8]

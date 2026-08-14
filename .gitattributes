@@ -1,0 +1,8 @@
+# RAW と画像は、バイト列そのものが中身です。
+# Windows では core.autocrlf が既定で有効なことがあり、テキストと判定されると
+# チェックアウト時に 0x0A が 0x0D 0x0A へ置き換わって壊れます。
+# git のバイナリ判定に任せず、明示しておきます。
+*.raw binary
+*.png binary
+*.ico binary
+*.cur binary
