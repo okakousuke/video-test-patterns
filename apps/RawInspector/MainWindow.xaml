@@ -667,11 +667,7 @@
                           PreviewMouseLeftButtonUp="OnPreviewLeftButtonUp"
                           MouseMove="OnPreviewScrollMouseMove"
                           SizeChanged="OnScrollSizeChanged">
-              <!-- 画像の外周に細い線を引きます。背景が暗いので、
-                   黒いパターンだと画像の端が背景と見分けられなくなるためです。 -->
-              <Border x:Name="PreviewFrame" HorizontalAlignment="Center" VerticalAlignment="Center"
-                      BorderBrush="#FF6E7480" BorderThickness="1">
-              <Grid>
+              <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
               <Image x:Name="PreviewImageElement"
                      Source="{Binding PreviewImage}"
                      Width="{Binding ScaledWidth}" Height="{Binding ScaledHeight}"
@@ -760,8 +756,19 @@
                          IsHitTestVisible="False"
                          SnapsToDevicePixels="True"
                          Visibility="{Binding IsPixelGridVisible, Converter={StaticResource BoolToVisibility}}" />
+
+              <!-- 画像の外周の線。背景が暗いので、黒いパターンだと画像の端が
+                   背景と見分けられなくなるためです。
+                   囲む枠（Border）ではなく、画像と同じ大きさで重ねます。囲む形だと
+                   上下左右に1pxずつ増えて 1922×1082 を要求し、1920×1080 の絵が
+                   1920×1080 の画面に収まらずスクロールバーが出ます。
+                   重ねるだけなら場所を取りません（実測 1920×1080）。 -->
+              <Rectangle x:Name="PreviewFrame"
+                         Width="{Binding ScaledWidth}" Height="{Binding ScaledHeight}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Stroke="#FF6E7480" StrokeThickness="1"
+                         IsHitTestVisible="False" SnapsToDevicePixels="True" />
               </Grid>
-              </Border>
             </ScrollViewer>
 
             <!-- manifestと違う条件で見ているときの警告。キャンバスへ重ねて出します。

@@ -298,7 +298,18 @@ public partial class MainWindow : Window
         var viewportHeight = PreviewScroll.ViewportHeight;
         if (viewportWidth <= 0 || viewportHeight <= 0) return;
 
-        // スクロールバーが出入りして揺れないよう、少しだけ余裕を取ります。
+        // そのまま等倍で入るなら等倍にします。1画素を1点で見るための道具なので、
+        // 収まるのに 99.6% にして絵全体をぼかす理由がありません。
+        // 全画面で FHD の絵を FHD の画面に出したときが、ちょうどこの場合です。
+        if (_viewModel.PreviewPixelWidth <= viewportWidth && _viewModel.PreviewPixelHeight <= viewportHeight)
+        {
+            _viewModel.ScalePercent = 100;
+            PreviewScroll.ScrollToHorizontalOffset(0);
+            PreviewScroll.ScrollToVerticalOffset(0);
+            return;
+        }
+
+        // 縮めるときは、スクロールバーが出入りして揺れないよう少しだけ余裕を取ります。
         const double margin = 8;
         var scale = Math.Min(
             (viewportWidth - margin) / _viewModel.PreviewPixelWidth,
