@@ -124,10 +124,44 @@ public sealed class GeneratorViewModel : ObservableObject
     }
 
     private int _width = 1920;
-    public int Width { get => _width; set { if (Set(ref _width, value)) Revalidate(); } }
+    public int Width
+    {
+        get => _width;
+        set { if (Set(ref _width, value)) { Raise(nameof(SizePreset)); Revalidate(); } }
+    }
+
+    /// <summary>
+    /// よく使う大きさです。幅と高さを毎回打たせると、桁を1つ間違えても気付けません。
+    /// 通称の付いている大きさは選べるようにしておきます（打ち込みも従来どおりできます）。
+    /// </summary>
+    public IReadOnlyList<string> SizePresets { get; } =
+        ResolutionNames.Presets.Select(p => p.Label).ToList();
+
+    /// <summary>いまの寸法に当たる選択肢です。表に無い大きさなら null（未選択）になります。</summary>
+    public string? SizePreset
+    {
+        get => ResolutionNames.Presets
+            .FirstOrDefault(p => p.Width == _width && p.Height == _height).Label;
+        set
+        {
+            if (value is null) return;
+            var hit = ResolutionNames.Presets.FirstOrDefault(p => p.Label == value);
+            if (hit.Label is null) return;
+
+            // 片方ずつ入れると、途中の組み合わせで判定が走って赤くなります。まとめて入れます。
+            Set(ref _width, hit.Width, nameof(Width));
+            Set(ref _height, hit.Height, nameof(Height));
+            Raise(nameof(SizePreset));
+            Revalidate();
+        }
+    }
 
     private int _height = 1080;
-    public int Height { get => _height; set { if (Set(ref _height, value)) Revalidate(); } }
+    public int Height
+    {
+        get => _height;
+        set { if (Set(ref _height, value)) { Raise(nameof(SizePreset)); Revalidate(); } }
+    }
 
     private string _colorModel = "ycbcr";
     public string ColorModel { get => _colorModel; set { if (Set(ref _colorModel, value)) Revalidate(); } }
