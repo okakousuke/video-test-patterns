@@ -1,7 +1,7 @@
 <Window x:Class="RawInspector.GeneratorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="パターンを生成" Height="720" Width="720"
+        Title="パターンを生成" Height="760" Width="1180" MinWidth="900"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource WindowBackground}">
 
@@ -68,7 +68,16 @@
       </DockPanel>
     </Border>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <!-- 左が条件、右が参考図。テスト信号発生器の説明書と同じで、
+         「どんな形の絵か」と「何を見るためのものか」を並べて置きます。
+         押してから絵を見るのでは、条件を決める助けになりません。 -->
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="420" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+
+    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
       <StackPanel>
 
         <TextBlock Text="何を描くか" Style="{StaticResource SectionHeader}" />
@@ -224,5 +233,47 @@
         </DockPanel>
       </StackPanel>
     </ScrollViewer>
+
+    <!-- 右: 参考図と、このパターンが何のためのものか。 -->
+    <ScrollViewer Grid.Column="1" Width="500" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+
+        <TextBlock Text="どんな絵になるか" Style="{StaticResource SectionHeader}" />
+
+        <!-- 図。背景を暗くしているのは、白地のパターン（frame や hatch）で
+             絵の端がどこまでかを見えるようにするためです。 -->
+        <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                Background="#FF2C2E33" MinHeight="120">
+          <Grid>
+            <Image Source="{Binding PreviewImage}" Stretch="Uniform" MaxWidth="480"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+            <TextBlock Text="このパターンの参考図は入っていません"
+                       Foreground="#FFB0B6C0" FontSize="11" Margin="12"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                       Visibility="{Binding HasPreviewImage, Converter={StaticResource InverseBoolToVisibility}}" />
+          </Grid>
+        </Border>
+
+        <!-- いま何を見ているのかは、必ず絵の下に1行で言い切ります。
+             参考図と実物の区別が付かないまま条件を決められるほうが困ります。 -->
+        <TextBlock Text="{Binding PreviewNote}" Foreground="{StaticResource MutedText}"
+                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+        <Button Content="この条件で描いてみる" Command="{Binding PreviewCommand}"
+                HorizontalAlignment="Left" Margin="0,8,0,0"
+                ToolTip="いまの条件のまま、絵だけを一時フォルダへ描かせて差し替えます。RAWは書きません。参考図と条件が同じあいだは押せません。" />
+
+        <TextBlock Text="細かい線・折り返し・ドットバイドットは、この大きさでは出ません。生成してから等倍（Ctrl+0）で見てください。"
+                   Foreground="{StaticResource MutedText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" />
+
+        <TextBlock Text="何を見るためのものか" Style="{StaticResource SectionHeader}" Margin="0,16,0,4" />
+        <TextBlock Text="{Binding Guide.Purpose}" TextWrapping="Wrap" />
+
+        <TextBlock Text="どう読むか" Style="{StaticResource SectionHeader}" Margin="0,12,0,4" />
+        <TextBlock Text="{Binding Guide.HowToRead}" TextWrapping="Wrap"
+                   Foreground="{StaticResource MutedText}" />
+      </StackPanel>
+    </ScrollViewer>
+    </Grid>
   </DockPanel>
 </Window>

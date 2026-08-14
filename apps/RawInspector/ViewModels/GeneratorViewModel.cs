@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using RawInspector.Models;
 
 namespace RawInspector.ViewModels;
@@ -24,10 +25,15 @@ public sealed class GeneratorViewModel : ObservableObject
         _onGenerated = onGenerated;
         GenerateCommand = new RelayCommand(async () => await GenerateAsync(), () => CanGenerate);
         CopyCommandCommand = new RelayCommand(CopyCommandLine, () => !string.IsNullOrEmpty(CommandLine));
+        // 参考図と条件が同じあいだは押せません。押しても同じ絵しか出ないためです。
+        PreviewCommand = new RelayCommand(async () => await PreviewAsync(),
+                                          () => !_isBusy && !HasProblem && _catalog is not null && DiffersFromThumbnail);
+        ShowDefaultThumbnail();
     }
 
     public RelayCommand GenerateCommand { get; }
     public RelayCommand CopyCommandCommand { get; }
+    public RelayCommand PreviewCommand { get; }
 
     // --- 生成器の呼び出し方 ---
 
@@ -111,6 +117,8 @@ public sealed class GeneratorViewModel : ObservableObject
         {
             if (!Set(ref _pattern, value)) return;
             RebuildPatternOptions();
+            // 別のパターンの絵を出したまま条件だけ変わる、という状態を作りません。
+            ShowDefaultThumbnail();
             Revalidate();
         }
     }
@@ -177,6 +185,129 @@ public sealed class GeneratorViewModel : ObservableObject
         Revalidate();
     }
 
+    // --- 参考図 ---
+    //
+    // 押す前に「どんな形の絵か」を出します。既定の姿は exe へ埋め込んだ静止画で、
+    // 選んだ瞬間に出ます（生成器は動きません）。つまみを触ったときだけ、
+    // その条件で実際に描かせて差し替えます。
+    //
+    // 静止画は実寸で描いたものを長辺480へ縮めてあります。**実物ではありません。**
+    // 画素単位の線・折り返し・ドットバイドットはこの大きさでは出せません。
+    // そこは割り切って、形と配置と密度の比だけを見るものにしています。
+
+    private BitmapSource? _previewImage;
+    public BitmapSource? PreviewImage
+    {
+        get => _previewImage;
+        private set { if (Set(ref _previewImage, value)) Raise(nameof(HasPreviewImage)); }
+    }
+
+    public bool HasPreviewImage => _previewImage is not null;
+
+    /// <summary>いま出ている絵が、触ったつまみを反映したものかどうかです。</summary>
+    private bool _isPreviewLive;
+    public bool IsPreviewLive { get => _isPreviewLive; private set => Set(ref _isPreviewLive, value); }
+
+    /// <summary>既定から動かしたつまみがあるかどうかです。</summary>
+    public bool HasTouchedOptions => ChangedPatternOptions().Any();
+
+    // 参考図を描いた条件です（tools/make_pattern_thumbnails.py と対になっています）。
+    private const int ThumbnailWidth = 1920;
+    private const int ThumbnailHeight = 1080;
+
+    /// <summary>
+    /// いまの条件が、参考図の条件と違うかどうかです。
+    ///
+    /// つまみだけでなく寸法も見ます。参考図は 1920×1080 で描いてあるので、
+    /// 4:3 を選べば画面の形そのものが変わり、画素で効くつまみの相対的な細かさも変わります。
+    /// </summary>
+    public bool DiffersFromThumbnail =>
+        HasTouchedOptions || _width != ThumbnailWidth || _height != ThumbnailHeight;
+
+    /// <summary>絵の下に出す一言です。いま何を見ているのかを言い切ります。</summary>
+    public string PreviewNote =>
+        !HasPreviewImage ? ""
+        : _isPreviewLive ? "いまの条件で描いた絵です。実寸を縮めてあります。"
+        : DiffersFromThumbnail
+            ? $"既定・{ThumbnailWidth}×{ThumbnailHeight} の姿です。いまの条件とは違います。"
+            : "形を見るための参考図です。実寸ではありません。";
+
+    public PatternGuide Guide => PatternGuide.For(_pattern);
+
+    private void ShowDefaultThumbnail()
+    {
+        PreviewImage = PatternThumbnails.For(_pattern);
+        IsPreviewLive = false;
+        RaisePreviewState();
+    }
+
+    private void RaisePreviewState()
+    {
+        Raise(nameof(PreviewNote));
+        Raise(nameof(HasTouchedOptions));
+        Raise(nameof(DiffersFromThumbnail));
+        Raise(nameof(Guide));
+        PreviewCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// いまの条件のまま、絵だけを一時フォルダへ描かせて差し替えます。
+    ///
+    /// `--outputs png` にしてRAWは書きません。4K の RAW は数百MBあり、
+    /// 見るためだけに作る理由がありません（絵は同じものが出ます）。
+    /// 生成器は決定的なので、ここで見た絵と本番の絵は一致します。
+    /// </summary>
+    private async Task PreviewAsync()
+    {
+        if (_catalog is null || _isBusy) return;
+
+        IsBusy = true;
+        StatusText = "この条件で描いています…";
+        try
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "RawInspector", "preview");
+            Directory.CreateDirectory(folder);
+            var basePath = Path.Combine(folder, "current");
+
+            // 出力先だけ差し替えます。ほかは本番と同じ引数です。
+            var arguments = BuildArguments();
+            var output = arguments.IndexOf("--output");
+            if (output >= 0) arguments[output + 1] = basePath;
+            arguments.Add("--outputs");
+            arguments.Add("png");
+
+            var (exitCode, stdout, stderr) = await GeneratorCatalog.RunAsync(_generatorCommand, arguments, null);
+            if (exitCode != 0)
+            {
+                Log = string.Join("\n", new[] { stdout.Trim(), stderr.Trim() }.Where(s => s.Length > 0));
+                StatusText = $"この条件では描けませんでした（終了コード {exitCode}）。";
+                return;
+            }
+
+            // 生成器が付ける名前です（pipeline.py が .preview.png にします）。
+            if (PatternThumbnails.FromFile(basePath + ".preview.png") is { } image)
+            {
+                PreviewImage = image;
+                IsPreviewLive = true;
+                StatusText = "いまの条件で描きました。";
+            }
+            else
+            {
+                StatusText = "描いた絵を読み込めませんでした。";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = "この条件では描けませんでした。";
+            Log = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            RaisePreviewState();
+        }
+    }
+
     private string _outputFolder = "";
     public string OutputFolder { get => _outputFolder; set { if (Set(ref _outputFolder, value)) Revalidate(); } }
 
@@ -235,6 +366,8 @@ public sealed class GeneratorViewModel : ObservableObject
     {
         CommandLine = BuildCommandLine();
         Raise(nameof(CanGenerate));
+        // つまみや寸法を触ると、出ている絵が「いまの条件」から外れます。そこを言い直します。
+        RaisePreviewState();
 
         if (_catalog is null)
         {

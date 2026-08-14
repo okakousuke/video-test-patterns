@@ -39,4 +39,12 @@
     <EmbeddedResource Include="..\..\docs\*.md" LogicalName="docs/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\docs\usage\*.md" LogicalName="docs/usage/%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- パターンの参考図。生成画面で「押す前にどんな形か」を出すためのものです。
+       tools/make_pattern_thumbnails.py が実寸で描いてから縮めて作ります。
+       42枚で 570KB ほどなので、docs と同じく exe へ埋め込みます。
+       隣に置く形にすると、実行ファイルだけ渡された人の画面から図が消えます。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="thumbnails\*.png" LogicalName="thumbnails/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
