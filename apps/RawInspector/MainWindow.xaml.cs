@@ -116,10 +116,16 @@ public partial class MainWindow : Window
     //
     // 左右の欄は Collapsed にしても、列の幅（340px など）はそのまま残ります。
     // 幅も 0 にしないと、絵の左右に空白の帯が残ってしまいます。
-    // 戻したときに元の幅へ返せるよう、畳む前に控えておきます。
+    //
+    // しかも幅を 0 にするだけでは足りません。列は MinWidth（240px と 300px）を
+    // 持っているので、Width=0 はそこで止められます。空の欄が横 540px を
+    // 抱えたままになり、絵はその内側にしか広がれません。
+    // 戻したときに元へ返せるよう、幅も下限も畳む前に控えておきます。
 
     private GridLength? _listWidthBeforeFullScreen;
     private GridLength? _detailWidthBeforeFullScreen;
+    private double _listMinWidthBeforeFullScreen;
+    private double _detailMinWidthBeforeFullScreen;
     private WindowStyle _styleBeforeFullScreen;
     private WindowState _stateBeforeFullScreen;
 
@@ -129,9 +135,14 @@ public partial class MainWindow : Window
         {
             _listWidthBeforeFullScreen = ListColumn.Width;
             _detailWidthBeforeFullScreen = DetailColumn.Width;
+            _listMinWidthBeforeFullScreen = ListColumn.MinWidth;
+            _detailMinWidthBeforeFullScreen = DetailColumn.MinWidth;
             _styleBeforeFullScreen = WindowStyle;
             _stateBeforeFullScreen = WindowState;
 
+            // 下限を先に外します。あとにすると Width=0 が下限で止められます。
+            ListColumn.MinWidth = 0;
+            DetailColumn.MinWidth = 0;
             ListColumn.Width = new GridLength(0);
             DetailColumn.Width = new GridLength(0);
 
@@ -146,6 +157,8 @@ public partial class MainWindow : Window
         }
         else
         {
+            ListColumn.MinWidth = _listMinWidthBeforeFullScreen;
+            DetailColumn.MinWidth = _detailMinWidthBeforeFullScreen;
             if (_listWidthBeforeFullScreen is { } list) ListColumn.Width = list;
             if (_detailWidthBeforeFullScreen is { } detail) DetailColumn.Width = detail;
             WindowStyle = _styleBeforeFullScreen;
