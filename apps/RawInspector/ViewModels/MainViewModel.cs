@@ -1012,34 +1012,68 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// ファイル選択の窓を「フォルダを開く窓」として使うための置き文字です。
+    ///
+    /// 何も選ばずに「開く」を押せるようにするには、名前の欄が空でないことが要ります。
+    /// ここに出た文字はそのまま利用者に見えるので、押すと何が起きるかを書いておきます。
+    /// </summary>
+    private const string FolderPickerCue = "このフォルダを開く";
+
+    /// <summary>
     /// 読み込むフォルダを選びます。
     ///
-    /// フォルダ選択の窓（OpenFolderDialog）は仕様上ファイルを一切出しません。
-    /// 名前だけで選ぶことになり、manifest が入っているのかどうかは開くまで分かりません。
-    /// そこでファイル選択の窓にして、manifest が見える状態で選んでもらいます。
-    /// 読み込むのは選んだ1本ではなく、**そのファイルのあるフォルダ**です
-    /// （従来どおり、その下のサブフォルダも走査します）。
+    /// 選ぶ対象はフォルダですが、フォルダ選択の窓（OpenFolderDialog）は使いません。
+    /// あれは仕様上ファイルを一切表示しないので、manifest が入っているのかどうかは
+    /// 開いて空の一覧が出るまで分からず、名前だけで当てることになります。
+    ///
+    /// 代わりに、ファイル選択の窓をフォルダ選択として使います。
+    /// 中の manifest が見えたまま、その場所を開けます。
+    ///   ・ValidateNames と CheckFileExists を外す … 実在するファイル名を選ばなくても押せます
+    ///   ・名前の欄に置き文字を入れる           … 何も選ばずに「開く」を押せるようにします
+    ///
+    /// 押したときに返る文字列は3通りあり、どれもフォルダに行き着きます（ResolveFolder）。
+    ///   1. 何も選ばずに押した → いま見えているフォルダ ＋ 置き文字
+    ///   2. manifest を選んで押した → そのファイルのフルパス
+    ///   3. 欄にフォルダのパスを打って押した → そのフォルダのパス
+    /// どのやり方でも同じ場所が開くので、利用者は使い分けを覚える必要がありません。
+    /// 読み込むのはそのフォルダで、従来どおり下のサブフォルダも走査します。
     /// </summary>
     private void OpenFolder()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "読み込みたいフォルダの中の manifest を1つ選んでください（そのフォルダごと読み込みます）",
+            Title = "RAWとmanifestのあるフォルダを開いてください（中の manifest が見えます）",
             Filter = "manifest (*.manifest.json)|*.manifest.json|JSONファイル (*.json)|*.json|すべてのファイル (*.*)|*.*",
             InitialDirectory = FolderPath.ForDialog(_outputFolder),
-            CheckFileExists = true,
+            FileName = FolderPickerCue,
+            ValidateNames = false,
+            CheckFileExists = false,
+            CheckPathExists = true,
             Multiselect = false,
         };
         if (dialog.ShowDialog() != true) return;
 
-        if (Path.GetDirectoryName(dialog.FileName) is not { Length: > 0 } folder)
+        if (ResolveFolder(dialog.FileName) is not { } folder)
         {
-            StatusText = "選んだファイルのフォルダが分かりませんでした。";
+            StatusText = "開く先のフォルダが分かりませんでした。";
             return;
         }
 
         LoadFolder(folder);
         ShowDashboard = false;
+    }
+
+    /// <summary>
+    /// 窓が返した文字列から、実際に読み込むフォルダを決めます。
+    /// フォルダそのものを先に見るのは、打ち込まれたときに親へ遡ってしまわないためです。
+    /// </summary>
+    private static string? ResolveFolder(string chosen)
+    {
+        if (chosen.Length == 0) return null;
+        if (Directory.Exists(chosen)) return chosen;
+
+        var parent = Path.GetDirectoryName(chosen);
+        return parent is { Length: > 0 } && Directory.Exists(parent) ? parent : null;
     }
 
     /// <summary>
