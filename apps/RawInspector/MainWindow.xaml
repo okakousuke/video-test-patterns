@@ -598,8 +598,13 @@
                   <ComboBox ItemsSource="{Binding RangeOptions}" SelectedItem="{Binding SelectedRange}"
                             Width="68" Margin="0,0,6,0" VerticalAlignment="Center"
                             ToolTip="コード値の使用範囲です。manifestと違う値にすると黒浮きや白飛びが出ます。" />
-                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}" Margin="0"
+                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}"
                           ToolTip="matrix・range・成分・色差の戻し方を、manifestに記録された条件へ戻します。" />
+                  <!-- 読み方を残す場所は、RAWの名前ではなく manifest です。
+                       表示条件を変えてもRAWのバイト列は変わらないので、名前に付けると嘘になります。 -->
+                  <Button Content="manifestへ" Margin="0"
+                          Command="{Binding SaveInterpretationManifestCommand}"
+                          ToolTip="manifestと違う条件にしていると押せます。／いまの読み方（matrix・range）を、同じRAWを指す別の manifest として書き出します。元の manifest と同じフォルダへ置きます（files のパスがそこからの相対だからです）。RAWは作りません。成分の選択や段は書きません。manifest はデータの条件を書くところで、画面の見せ方を書くところではないためです。" />
                 </StackPanel>
               </Border>
 

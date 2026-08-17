@@ -54,6 +54,10 @@ public sealed class MainViewModel : ObservableObject
         SaveAllFormatsCommand = new RelayCommand(SaveAllFormats, () => HasPreview);
         ResetFiltersCommand = new RelayCommand(ResetFilters);
         ResetInterpretationCommand = new RelayCommand(ResetInterpretation, () => HasPreview);
+        // 記録どおりのまま書き出しても、元と同じものが1つ増えるだけです。
+        // 変えているときにだけ押せるようにし、押せない理由はツールチップに書きます。
+        SaveInterpretationManifestCommand = new RelayCommand(
+            SaveInterpretationManifest, () => IsInterpretationOverridden);
         Dashboard = new DashboardViewModel(
             folder =>
             {
@@ -253,6 +257,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand SaveAllFormatsCommand { get; }
     public RelayCommand ResetFiltersCommand { get; }
     public RelayCommand ResetInterpretationCommand { get; }
+    public RelayCommand SaveInterpretationManifestCommand { get; }
     public RelayCommand ExpandAllCommand { get; }
     public RelayCommand CollapseAllCommand { get; }
 
@@ -782,6 +787,7 @@ public sealed class MainViewModel : ObservableObject
     {
         Raise(nameof(IsInterpretationOverridden));
         Raise(nameof(OverrideWarning));
+        SaveInterpretationManifestCommand.RaiseCanExecuteChanged();
         Raise(nameof(IsStagePartial));
         Raise(nameof(StageWarning));
         UpdatePreviewRecipe();
@@ -1687,6 +1693,7 @@ public sealed class MainViewModel : ObservableObject
             PreviewImage = bitmap;
             Raise(nameof(IsInterpretationOverridden));
             Raise(nameof(OverrideWarning));
+            SaveInterpretationManifestCommand.RaiseCanExecuteChanged();
             UpdatePreviewRecipe();
             StatusText = "読み込みました。";
             // 読み直しのときは倍率を保ちます。作り直す前後を見比べる操作なので、
@@ -1739,6 +1746,25 @@ public sealed class MainViewModel : ObservableObject
             if (_markOutOfRange && CanMarkOutOfRange) parts.Add("range");
 
             return parts.Count == 0 ? "" : "_" + string.Join("-", parts);
+        }
+    }
+
+    /// <summary>
+    /// manifest として書き出すときに名前へ足す部分です。
+    ///
+    /// 画像の保存に使う <see cref="ViewSuffix"/> とは別に持ちます。あちらには成分や段まで入りますが、
+    /// manifest に書くのは matrix と range だけです。**名前と中身は揃っている必要があります。**
+    /// `_Y-norm` の付いた manifest があると、成分や段まで記録されていると読まれます。
+    /// </summary>
+    private string InterpretationSuffix
+    {
+        get
+        {
+            if (!IsInterpretationOverridden) return "";
+            var parts = new List<string>();
+            if (IsYcbcrSelected) parts.Add(_selectedMatrix);
+            parts.Add(_selectedRange);
+            return "_" + string.Join("-", parts);
         }
     }
 
@@ -1948,6 +1974,72 @@ public sealed class MainViewModel : ObservableObject
         {
             StatusText = $"RAWのコピーに失敗しました: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// いまの読み方を、manifest として書き出します。
+    ///
+    /// 表示条件を変えてもRAWのバイト列は変わらないので、RAWコピーの名前に条件を付けても嘘になります
+    /// （「bt601 へ変換したRAW」があるように見えます）。読み方を残す場所は manifest のほうです。
+    /// <b>同じRAWを指したまま</b>、matrix と range だけが違う manifest を添えます。
+    /// </summary>
+    private void SaveInterpretationManifest()
+    {
+        if (_currentManifestPath is null || _currentManifest is null || _rawImage is null) return;
+
+        var target = DerivedManifest.SuggestPath(_currentManifestPath, InterpretationSuffix);
+        var matrix = IsYcbcrSelected ? _selectedMatrix : null;
+
+        var dropped = _currentManifest.Files.Count(f => !ManifestInfo.Same(f.Kind, "raw"));
+        var ignored = new List<string>();
+        if (_channels != ChannelMask.All) ignored.Add("成分の選択");
+        if (CurrentOptions.UseRawCodeGray) ignored.Add("コード値表示");
+        if (_upsample == ChromaUpsample.Bilinear) ignored.Add("色差の戻し方");
+        if (IsStagePartial) ignored.Add("段");
+        if (_markOutOfRange) ignored.Add("範囲外の表示");
+
+        if (MessageBox.Show(
+                "いまの読み方を manifest として書き出します。RAWは作りません。\n\n"
+                + $"書き出す先　　: {target}\n"
+                + $"指すRAW　　　 : {_currentManifest.Raw.Path}（元のものと同じファイルです）\n"
+                + $"書き換える条件: matrix {(matrix is null ? "—" : $"{_rawImage.DefaultInterpretation.Matrix} → {matrix}")}"
+                + $" / range {_rawImage.DefaultInterpretation.Range} → {_selectedRange}\n"
+                + (dropped > 0
+                    ? $"外すもの　　　: RAW以外のファイル {dropped} 件（元の条件で作られた絵なので、この条件では合いません）\n"
+                    : "")
+                + (ignored.Count > 0
+                    ? $"書かないもの　: {string.Join("・", ignored)}\n"
+                      + "　　　　　　　  manifest はデータの条件を書くところで、画面の見せ方を書くところではありません。\n"
+                    : "")
+                + "\n書き出しますか？",
+                "読み方を manifest に書き出す",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information) != MessageBoxResult.OK) return;
+
+        if (File.Exists(target)
+            && MessageBox.Show($"すでにあります。上書きしますか？\n\n{target}", "上書きの確認",
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+
+        try
+        {
+            var json = DerivedManifest.Build(
+                File.ReadAllText(_currentManifestPath),
+                Path.GetFileName(_currentManifestPath),
+                matrix,
+                _selectedRange,
+                DateTimeOffset.Now);
+            File.WriteAllText(target, json);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"manifest を書き出せませんでした: {ex.Message}";
+            return;
+        }
+
+        // 書いたものがその場で一覧に並ぶよう読み直し、書いたほうを選びます。
+        // 書けたのかどうかを、フォルダを開き直して確かめさせないためです。
+        LoadFolder(_currentFolder ?? Path.GetDirectoryName(target)!, target, _scalePercent);
+        StatusText = $"読み方を manifest に書き出しました: {Path.GetFileName(target)}";
     }
 
     private void SelectOutputFolder()
