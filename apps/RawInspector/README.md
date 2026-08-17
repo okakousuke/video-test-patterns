@@ -265,7 +265,7 @@ manifestへ戻す     colorbar_ycbcr420_8bit_nv12.png
 ```
 素材
   generated      188 件 / 562.6 MB / パターン 42 種            [開く]
-  samples/raw     21 件 / 1.7 MB   / パターン 2 種             [開く]
+  samples/raw     36 件 / 約 2.8 MB / パターン 17 種             [開く]
 
 生成器
   video-test-patterns 0.1.0　パターン 42 種 / 成立する組み合わせ 62 通り / 格納形式 6 種
