@@ -6,8 +6,8 @@
         Background="{StaticResource WindowBackground}"
         WindowStartupLocation="CenterOwner">
 
+  <!-- ApplicationCommands.Help は F1 を最初から持っているので、キーの割り当ては書きません。 -->
   <Window.InputBindings>
-    <KeyBinding Key="F1" Command="Help" />
     <KeyBinding Key="F5" Command="{Binding CompareCommand}" />
   </Window.InputBindings>
 
