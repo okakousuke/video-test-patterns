@@ -52,12 +52,9 @@ public sealed class ScopeViewModel : ObservableObject
         private set
         {
             if (!Set(ref _isBusy, value)) return;
-            Raise(nameof(IsReady));
             RefreshCommand.RaiseCanExecuteChanged();
         }
     }
-
-    public bool IsReady => !_isBusy && _statistics is not null;
 
     private string _status = "数えています…";
     public string Status { get => _status; private set => Set(ref _status, value); }

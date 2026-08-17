@@ -61,8 +61,6 @@ public sealed class CompareViewModel : ObservableObject
     private readonly Func<IReadOnlyList<CompareCandidate>> _candidateProvider;
     private readonly Func<CompareCandidate, InspectionTarget?> _loader;
 
-    private InspectionTarget? _left;
-    private InspectionTarget? _right;
     private RawComparison? _comparison;
     private ComparisonResult? _result;
 
@@ -121,8 +119,6 @@ public sealed class CompareViewModel : ObservableObject
         + "大きさが違うものは比べません（拡大縮小して揃えると、画素は元のどちらとも違う値になります）。";
 
     // --- 何で比べるか ---
-
-    public IReadOnlyList<CompareDomain> Domains { get; } = [CompareDomain.Display, CompareDomain.Codes];
 
     private CompareDomain _domain = CompareDomain.Display;
     public CompareDomain Domain
@@ -234,8 +230,6 @@ public sealed class CompareViewModel : ObservableObject
         }
 
         IsBusy = true;
-        _left = left;
-        _right = right;
         LeftTitle = left.Title;
         RightTitle = right.Title;
         LeftReading = "左は本体の表示条件で読んでいます: " + Describe(left);
