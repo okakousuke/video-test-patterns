@@ -74,6 +74,7 @@ public sealed class MainViewModel : ObservableObject
         // F1 とツールバーから呼びます。HOME とビューアは別の画面なので、出す説明も分けます。
         ShowHelpCommand = new RelayCommand(() =>
             RequestHelp?.Invoke(ShowDashboard ? HelpLibrary.Launcher : HelpLibrary.Viewer));
+        ShowScopeCommand = new RelayCommand(() => RequestScope?.Invoke(), () => HasPreview);
         ToggleFullScreenCommand = new RelayCommand(() => IsFullScreen = !IsFullScreen, () => HasPreview);
         ExitFullScreenCommand = new RelayCommand(() => IsFullScreen = false, () => IsFullScreen);
         ExpandAllCommand = new RelayCommand(() => SetAllGroupsExpanded(true));
@@ -124,8 +125,25 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public Action<string>? RequestHelp { get; set; }
 
+    /// <summary>分布の窓を出してほしい、という合図です。</summary>
+    public Action? RequestScope { get; set; }
+
+    /// <summary>
+    /// 分布の窓へ渡す相手です。<b>いま選んでいるRAWと、いまの読み方を対で渡します。</b>
+    /// 別々に渡せるようにすると、あるRAWの数字を別の条件の説明と一緒に出せてしまいます。
+    /// </summary>
+    public ScopeTarget? CurrentScopeTarget => _rawImage is null || _currentManifest is null
+        ? null
+        : new ScopeTarget(_rawImage, ScopeTitle(), CurrentOptions);
+
+    private string ScopeTitle() =>
+        $"{Path.GetFileName(_currentRawPath ?? _currentManifestPath ?? "")}"
+        + $"（{_currentManifest!.Width} × {_currentManifest.Height} / {_currentManifest.ColorModel} "
+        + $"{_currentManifest.Subsampling} / {_currentManifest.BitDepth}bit / {_currentManifest.Storage}）";
+
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowHelpCommand { get; }
+    public RelayCommand ShowScopeCommand { get; }
     public RelayCommand ToggleFullScreenCommand { get; }
     public RelayCommand ExitFullScreenCommand { get; }
 
@@ -849,6 +867,7 @@ public sealed class MainViewModel : ObservableObject
             SaveAllFormatsCommand.RaiseCanExecuteChanged();
             SaveRawCopyCommand.RaiseCanExecuteChanged();
             ResetInterpretationCommand.RaiseCanExecuteChanged();
+            ShowScopeCommand.RaiseCanExecuteChanged();
             RaiseScaleWarning();
             // 絵が入るまで全画面にする意味はないので HasPreview を条件にしています。
             // ここで知らせないと、この RelayCommand は CommandManager を見ていないので

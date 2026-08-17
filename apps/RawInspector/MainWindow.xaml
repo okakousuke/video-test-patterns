@@ -126,6 +126,7 @@
     <!-- いま出ている画面の説明を開きます。HOME とビューアで行き先が変わります。 -->
     <KeyBinding Key="F1" Command="{Binding ShowHelpCommand}" />
     <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
+    <KeyBinding Key="F7" Command="{Binding ShowScopeCommand}" />
     <KeyBinding Key="F11" Command="{Binding ToggleFullScreenCommand}" />
     <KeyBinding Key="Escape" Command="{Binding ExitFullScreenCommand}" />
     <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ActualSizeCommand}" />
@@ -540,6 +541,10 @@
                                 IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
                                 IsEnabled="{Binding CanShowPixelGrid}"
                                 ToolTip="600% 以上に拡大すると押せます。それより下で線を引くと、線のほうが画素より太くなって絵が読めません。／画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。" />
+                  <!-- 分布の窓。絵を眺めても「1コード値だけずれている」は分かりません。
+                       別の窓にしているのは、絵と分布を並べて見たいためです。 -->
+                  <Button Content="📊 分布..." Command="{Binding ShowScopeCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。全画素を数えて、ヒストグラム・波形・ベクトルと、規定の範囲を外れた画素の数を出します（F7）。絵と並べて見られるよう別の窓で開きます。" />
                   <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
                           ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"

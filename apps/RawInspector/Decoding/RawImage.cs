@@ -319,6 +319,144 @@ public sealed class RawImage
         return second ? cb : cr;
     }
 
+    /// <summary>
+    /// 全画素を数えて、分布と内訳を返します。
+    ///
+    /// <b>読み出しはここでも <see cref="ReadCodes(int,int,ChromaUpsample)"/> の1本です。</b>
+    /// 集計用に別の読み方を書くと、絵と数字が食い違っても気付けません。
+    ///
+    /// 効かせるのは matrix・range・色差の戻し方だけです。成分の選択と段は無視します。
+    /// ここで見たいのはRAWに入っている値そのものであって、いま出している絵ではないためです。
+    /// </summary>
+    public ScopeStatistics Analyze(PreviewRenderOptions options, ChannelMask waveformChannel)
+    {
+        // 集計に使う条件を、絵の条件から切り離しておきます。
+        var reading = options with { Channels = ChannelMask.All, RawCodeGray = false, Stage = PipelineStage.Display };
+
+        var histogram = new[] { new int[MaxCode + 1], new int[MaxCode + 1], new int[MaxCode + 1] };
+        var sums = new double[3];
+        var mins = new[] { int.MaxValue, int.MaxValue, int.MaxValue };
+        var maxs = new[] { int.MinValue, int.MinValue, int.MinValue };
+
+        var columns = Math.Min(Width, ScopeStatistics.MaxWaveformColumns);
+        // 端数を捨てないよう切り上げます。捨てると右端の列がまるごと数から漏れます。
+        var pixelsPerColumn = (Width + columns - 1) / columns;
+        columns = (Width + pixelsPerColumn - 1) / pixelsPerColumn;
+        var waveform = new int[columns * ScopeStatistics.WaveformLevels];
+
+        var vector = _isYcbcr ? new int[ScopeStatistics.VectorSize * ScopeStatistics.VectorSize] : [];
+        var shift = 1 << (BitDepth - 8);
+
+        int over = 0, under = 0, both = 0;
+
+        for (var y = 0; y < Height; y++)
+        {
+            for (var x = 0; x < Width; x++)
+            {
+                var (first, second, third) = ReadCodes(x, y, reading.Upsample);
+
+                histogram[0][Math.Clamp(first, 0, MaxCode)]++;
+                histogram[1][Math.Clamp(second, 0, MaxCode)]++;
+                histogram[2][Math.Clamp(third, 0, MaxCode)]++;
+                sums[0] += first;
+                sums[1] += second;
+                sums[2] += third;
+                mins[0] = Math.Min(mins[0], first);
+                mins[1] = Math.Min(mins[1], second);
+                mins[2] = Math.Min(mins[2], third);
+                maxs[0] = Math.Max(maxs[0], first);
+                maxs[1] = Math.Max(maxs[1], second);
+                maxs[2] = Math.Max(maxs[2], third);
+
+                var picked = waveformChannel switch
+                {
+                    ChannelMask.Second => second,
+                    ChannelMask.Third => third,
+                    _ => first,
+                };
+                var level = (int)((long)Math.Clamp(picked, 0, MaxCode) * (ScopeStatistics.WaveformLevels - 1) / MaxCode);
+                waveform[x / pixelsPerColumn * ScopeStatistics.WaveformLevels + level]++;
+
+                if (_isYcbcr)
+                {
+                    var cb = Math.Clamp(second / shift, 0, ScopeStatistics.VectorSize - 1);
+                    var cr = Math.Clamp(third / shift, 0, ScopeStatistics.VectorSize - 1);
+                    vector[cr * ScopeStatistics.VectorSize + cb]++;
+                }
+
+                var (isOver, isUnder) = RangeFlags(first, second, third, reading);
+                if (isOver && isUnder) both++;
+                else if (isOver) over++;
+                else if (isUnder) under++;
+            }
+        }
+
+        var (l1, l2, l3) = ChannelLabels;
+        var labels = new[] { l1, l2, l3 };
+        var stats = new ChannelStat[3];
+        for (var i = 0; i < 3; i++)
+        {
+            var (low, high) = NominalRange(i, options.Interpretation);
+            var distinct = 0;
+            var below = 0;
+            var above = 0;
+            for (var code = 0; code <= MaxCode; code++)
+            {
+                var count = histogram[i][code];
+                if (count == 0) continue;
+                distinct++;
+                if (code < low) below += count;
+                if (code > high) above += count;
+            }
+
+            stats[i] = new ChannelStat(labels[i], mins[i], maxs[i], sums[i] / (Width * (double)Height),
+                distinct, low, high, below, above);
+        }
+
+        return new ScopeStatistics
+        {
+            Width = Width,
+            Height = Height,
+            BitDepth = BitDepth,
+            MaxCode = MaxCode,
+            IsYcbcr = _isYcbcr,
+            IsLimited = options.Interpretation.IsLimited,
+            Options = reading,
+            Histogram = histogram,
+            Channels = stats,
+            Waveform = waveform,
+            WaveformColumns = columns,
+            PixelsPerColumn = pixelsPerColumn,
+            WaveformChannel = waveformChannel,
+            Vector = vector,
+            ClippedOver = over,
+            ClippedUnder = under,
+            ClippedBoth = both,
+        };
+    }
+
+    /// <summary>
+    /// その成分の「規定の範囲」です。limited のときだけ、格納できる範囲より内側になります。
+    /// 輝度は 16-235、色差は 16-240（いずれも8bit換算）で、この外は放送の規定では使いません。
+    /// full range と RGB は格納できる範囲がそのまま規定の範囲です。
+    /// </summary>
+    private (int Low, int High) NominalRange(int channel, ColorInterpretation interpretation)
+    {
+        if (!_isYcbcr || !interpretation.IsLimited) return (0, MaxCode);
+        var shift = 1 << (BitDepth - 8);
+        return channel == 0 ? (16 * shift, 235 * shift) : (16 * shift, 240 * shift);
+    }
+
+    /// <summary>
+    /// 丸める前の値が 0-1 の外へ出ているかどうかです。
+    /// プレビューの「範囲外」表示と<b>同じ判定を通します</b>。数と色が食い違わないようにするためです。
+    /// </summary>
+    private (bool Over, bool Under) RangeFlags(int first, int second, int third, PreviewRenderOptions options)
+    {
+        var (_, _, _, over, under) = StageValues(first, second, third, options, PipelineStage.Rgb);
+        return (over, under);
+    }
+
     /// <summary>選ばなかった成分に入れる値です。成分ごとに「無いこと」の表し方が違います。</summary>
     private int NeutralCode(int index, PreviewRenderOptions options)
     {
