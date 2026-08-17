@@ -39,6 +39,46 @@ Python生成器と、`apps/` 配下のビューアは、このファイルをRAW
 }
 ```
 
+## 読み方を差し替えた manifest（`derived_from`）
+
+同じRAWを別の条件で読んだ状態は、**RAWではなく manifest 側に残す**。
+表示条件を変えてもRAWのバイト列は1バイトも変わらないので、RAWの名前に `_bt601` のような印を付けると
+「bt601 へ変換したRAW」があるように見える。実際にはそんなものは作っていない。
+
+`apps/RawInspector` は、いまの読み方を **同じRAWを指したまま** 別の manifest として書き出せる。
+生成器はこの項目を書かない。読む側は、知らなければ無視してよい（v1 の必須項目は変わらない）。
+
+```json
+{
+  "parameters": { "matrix": "bt601", "range": "full" },
+  "derived_from": {
+    "manifest": "colorbar_ycbcr444_8bit_planar_bt709_limited.manifest.json",
+    "tool": "RawInspector",
+    "written_at": "2026-08-17T18:44:32+00:00",
+    "changed": { "matrix": { "from": "bt709", "to": "bt601" } },
+    "dropped_files": ["colorbar_....preview.png"],
+    "note": "RAWのバイト列は元のものと同じです。…"
+  }
+}
+```
+
+守ること。
+
+- 差し替えてよいのは `parameters.matrix` と `parameters.range` だけとする。
+  成分の選択や表示の段は**書かない**。manifest はデータの条件を書くところであって、
+  画面の見せ方を書くところではない。
+- `files` は `kind: raw` だけを残す。プレビュー画像は**差し替える前の条件で描かれた絵**なので、
+  新しい条件の manifest に付いていると「この条件で見るとこうなる」と読まれる。外したものは
+  `dropped_files` に名前を残す。
+- `parameters_sha256` は書き換えたあとの条件で計算し直す。ただし計算し直した値が
+  生成器の数え方（`json.dumps(params, sort_keys=True, ensure_ascii=False)` の SHA-256）と
+  一致することを、**書き換える前の値で確かめてから**にする。確かめられないときは項目ごと外す。
+  合っていないハッシュを残すのは、無いより悪い。
+- `generator` はそのままにする。RAWを作ったのはその生成器で、そこは変わっていない。
+  manifest を書いたのが誰かは `derived_from.tool` に出る。
+- 元の manifest と**同じディレクトリ**へ置く。`files[].path` はそこからの相対と決まっているので、
+  別の場所へ置くとRAWを指せなくなる。
+
 ## ビューアの対応段階
 
 | 段階 | 表示対象 | 状態 |

@@ -23,6 +23,8 @@ public partial class MainWindow : Window
         // HOME からも生成の窓を開けるようにします。窓を作れるのは画面側だけです。
         _viewModel.RequestGenerator = OpenGenerator;
         _viewModel.RequestHelp = document => HelpWindow.ShowDocument(this, document);
+        _viewModel.RequestScope = OpenScope;
+        _viewModel.RequestCompare = OpenCompare;
 
         _viewModel.FitRequested += (_, _) => Dispatcher.BeginInvoke(Fit, DispatcherPriority.Loaded);
         _viewModel.PropertyChanged += (_, e) =>
@@ -32,6 +34,18 @@ public partial class MainWindow : Window
                 or nameof(MainViewModel.ScalePercent)
                 or nameof(MainViewModel.ChromaBlockWidth)) UpdatePixelGrid();
             if (e.PropertyName == nameof(MainViewModel.IsFullScreen)) ApplyFullScreen();
+
+            // 分布の窓へは「変わった」ことだけを伝えます。数え直すかどうかは向こうが決めます
+            // （数え直しは全画素を1周するので、選択を送るたびに走らせません）。
+            if (e.PropertyName is nameof(MainViewModel.PreviewImage)
+                or nameof(MainViewModel.SelectedMatrix)
+                or nameof(MainViewModel.SelectedRange)
+                or nameof(MainViewModel.Upsample))
+            {
+                _scopeWindow?.NotifyTargetChanged();
+                // 比較の窓へは、候補を集め直させます（開いているRAWが変われば、相手の一覧も変わります）。
+                if (e.PropertyName == nameof(MainViewModel.PreviewImage)) _compareWindow?.NotifyTargetChanged();
+            }
         };
         RestoreLayout();
 
@@ -285,6 +299,49 @@ public partial class MainWindow : Window
     }
 
     private void OnGenerated(string manifestPath) => _viewModel.AdoptGenerated(manifestPath);
+
+    /// <summary>
+    /// 分布の窓を開きます。生成の窓と同じで、閉じるまで使い回します。
+    ///
+    /// 窓は本体の選択を<b>自分から追いかけません</b>。4K なら1回の集計で 800 万画素を1周するので、
+    /// 一覧を矢印キーで送るたびに走らせると本体の操作まで重くなります。
+    /// 代わりに、対象や条件が変わったことだけを伝えて、窓の側で「古い」と出させます。
+    /// </summary>
+    private ScopeWindow? _scopeWindow;
+
+    /// <summary>
+    /// 2枚を突き合わせる窓を開きます。分布の窓と同じで、閉じるまで使い回します。
+    /// </summary>
+    private CompareWindow? _compareWindow;
+
+    private void OpenCompare()
+    {
+        if (_compareWindow is { IsLoaded: true })
+        {
+            _compareWindow.Activate();
+            return;
+        }
+
+        _compareWindow = new CompareWindow(
+            () => _viewModel.CurrentTarget,
+            _viewModel.BuildCompareCandidates,
+            _viewModel.LoadCompareCandidate) { Owner = this };
+        _compareWindow.Closed += (_, _) => _compareWindow = null;
+        _compareWindow.Show();
+    }
+
+    private void OpenScope()
+    {
+        if (_scopeWindow is { IsLoaded: true })
+        {
+            _scopeWindow.Activate();
+            return;
+        }
+
+        _scopeWindow = new ScopeWindow(() => _viewModel.CurrentTarget) { Owner = this };
+        _scopeWindow.Closed += (_, _) => _scopeWindow = null;
+        _scopeWindow.Show();
+    }
 
     /// <summary>
     /// 画像全体が表示領域へ収まる倍率にします。表示領域の大きさはビューしか知らないため、

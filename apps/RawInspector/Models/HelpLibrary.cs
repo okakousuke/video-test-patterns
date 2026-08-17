@@ -31,6 +31,8 @@ public static class HelpLibrary
     public const string Viewer = "usage/viewer.md";
     public const string Generator = "usage/generator.md";
     public const string BatchTools = "usage/batch-tools.md";
+    public const string Scopes = "usage/scopes.md";
+    public const string Compare = "usage/compare.md";
 
     /// <summary>
     /// 目次です。ここに並べたものだけが左の一覧に出ます。
@@ -43,6 +45,10 @@ public static class HelpLibrary
             "起動して最初に出る画面。素材の件数と生成器の状態を見ます。"),
         new(Viewer, "使い方", "RAWを見る",
             "フォルダを開いて1本ずつ確かめます。表示条件の切り替えと画素の読み方。"),
+        new(Scopes, "使い方", "分布で見る",
+            "面ではなく分布で見ます。ヒストグラム・波形・ベクトルと、規定範囲の外にある画素の数。"),
+        new(Compare, "使い方", "2枚を突き合わせる",
+            "並べて見るだけでは言えない差を数えます。表示RGBの差とコード値の差。"),
         new(Generator, "使い方", "パターンを作る",
             "条件を選んで1本作ります。成立しない組み合わせの読み方。"),
         new(BatchTools, "使い方", "スクリプトを走らせる",

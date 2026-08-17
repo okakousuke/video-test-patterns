@@ -126,6 +126,8 @@
     <!-- いま出ている画面の説明を開きます。HOME とビューアで行き先が変わります。 -->
     <KeyBinding Key="F1" Command="{Binding ShowHelpCommand}" />
     <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
+    <KeyBinding Key="F7" Command="{Binding ShowScopeCommand}" />
+    <KeyBinding Key="F8" Command="{Binding ShowCompareCommand}" />
     <KeyBinding Key="F11" Command="{Binding ToggleFullScreenCommand}" />
     <KeyBinding Key="Escape" Command="{Binding ExitFullScreenCommand}" />
     <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ActualSizeCommand}" />
@@ -540,6 +542,13 @@
                                 IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
                                 IsEnabled="{Binding CanShowPixelGrid}"
                                 ToolTip="600% 以上に拡大すると押せます。それより下で線を引くと、線のほうが画素より太くなって絵が読めません。／画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。" />
+                  <!-- 分布の窓。絵を眺めても「1コード値だけずれている」は分かりません。
+                       別の窓にしているのは、絵と分布を並べて見たいためです。 -->
+                  <Button Content="📊 分布..." Command="{Binding ShowScopeCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。全画素を数えて、ヒストグラム・波形・ベクトルと、規定の範囲を外れた画素の数を出します（F7）。絵と並べて見られるよう別の窓で開きます。" />
+                  <!-- 2枚の突き合わせ。並べて見るだけでは「同じに見える」までしか言えません。 -->
+                  <Button Content="⇔ 比較..." Command="{Binding ShowCompareCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。同じ大きさの別のRAW（または同じRAWを manifest の記録どおりに読んだもの）と突き合わせて、差を数えます（F8）。" />
                   <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
                           ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"
@@ -589,12 +598,17 @@
                   <ComboBox ItemsSource="{Binding RangeOptions}" SelectedItem="{Binding SelectedRange}"
                             Width="68" Margin="0,0,6,0" VerticalAlignment="Center"
                             ToolTip="コード値の使用範囲です。manifestと違う値にすると黒浮きや白飛びが出ます。" />
-                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}" Margin="0"
+                  <Button Content="戻す" Command="{Binding ResetInterpretationCommand}"
                           ToolTip="matrix・range・成分・色差の戻し方を、manifestに記録された条件へ戻します。" />
+                  <!-- 読み方を残す場所は、RAWの名前ではなく manifest です。
+                       表示条件を変えてもRAWのバイト列は変わらないので、名前に付けると嘘になります。 -->
+                  <Button Content="manifestへ" Margin="0"
+                          Command="{Binding SaveInterpretationManifestCommand}"
+                          ToolTip="manifestと違う条件にしていると押せます。／いまの読み方（matrix・range）を、同じRAWを指す別の manifest として書き出します。元の manifest と同じフォルダへ置きます（files のパスがそこからの相対だからです）。RAWは作りません。成分の選択や段は書きません。manifest はデータの条件を書くところで、画面の見せ方を書くところではないためです。" />
                 </StackPanel>
               </Border>
 
-              <Border Style="{StaticResource ToolGroup}" Margin="0"
+              <Border Style="{StaticResource ToolGroup}"
                       Visibility="{Binding HasSubsampledChroma, Converter={StaticResource BoolToHidden}}">
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="色差" VerticalAlignment="Center" Margin="2,0,6,0"
@@ -605,6 +619,25 @@
                   <RadioButton Content="バイリニア" GroupName="Upsample" Style="{StaticResource ToolToggle}" Margin="0"
                                IsChecked="{Binding IsBilinearUpsample, Mode=TwoWay}"
                                ToolTip="隣り合う色差サンプルの間を線形に補間します。境界がなだらかになります。" />
+                </StackPanel>
+              </Border>
+
+              <!-- 変換の段。右下の説明は手順を文章で書いているだけで、どの段で何が変わったのかは
+                   絵になっていません。段を選ぶと、そこで止めた値がそのまま画面に出ます。
+                   並ぶ段は選んだRAWによって変わります（4:4:4 に色差を戻す段はありません）。 -->
+              <Border Style="{StaticResource ToolGroup}" Margin="0"
+                      Visibility="{Binding HasStages, Converter={StaticResource BoolToHidden}}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="段" VerticalAlignment="Center" Margin="2,0,6,0"
+                             Foreground="{StaticResource MutedText}" />
+                  <!-- いちばん長い項目（4. RGBへ戻した直後（丸める前））が入る幅にします。 -->
+                  <ComboBox ItemsSource="{Binding Stages}" SelectedItem="{Binding SelectedStage}"
+                            DisplayMemberPath="Label" Width="212" Margin="0,0,6,0" VerticalAlignment="Center"
+                            ToolTip="変換のどの段で止めた値を画面に出すかです。既定は最後の段（いつもの表示）です。途中で止めているあいだは、絵の上に警告を出します。" />
+                  <ToggleButton Content="範囲外" Style="{StaticResource ToolToggle}" Margin="0"
+                                IsChecked="{Binding MarkOutOfRange, Mode=TwoWay}"
+                                IsEnabled="{Binding CanMarkOutOfRange}"
+                                ToolTip="3段目以降で押せます。1・2段目のコード値は格納できる範囲の中にしか入らないので、範囲外は出ようがありません。／0-1 の外へ出た画素を色で示します。絵は無彩色にし、上へ外れた画素を赤、下へ外れた画素を青、成分によって上下どちらへも出た画素をマゼンタにします。丸めたあとの絵では 0 未満も 1 超も同じ黒・同じ白になるため、潰れた場所はここでしか分かりません。" />
                 </StackPanel>
               </Border>
 
@@ -765,12 +798,29 @@
             </ScrollViewer>
 
             <!-- manifestと違う条件で見ているときの警告。キャンバスへ重ねて出します。
-                 ツールバーの中に置くと、出たり消えたりするたびに枠の高さが変わってしまいます。 -->
-            <Border VerticalAlignment="Top" HorizontalAlignment="Stretch" Margin="8" Padding="10,6"
-                    CornerRadius="4" Background="#F0FFF4E5" BorderBrush="#FFE0B77A" BorderThickness="1"
-                    Visibility="{Binding IsInterpretationOverridden, Converter={StaticResource BoolToVisibility}}">
-              <TextBlock Text="{Binding OverrideWarning}" TextWrapping="Wrap" Foreground="#FF7A4E00" />
-            </Border>
+                 ツールバーの中に置くと、出たり消えたりするたびに枠の高さが変わってしまいます。
+                 段を途中で止めているときの警告も同じ扱いです。どちらも
+                 「いま見えている絵は、そのRAWの素直な姿ではない」という話で、
+                 忘れたまま眺めると原因を取り違えます。縦に積むので、両方出ても重なりません。 -->
+            <StackPanel VerticalAlignment="Top" HorizontalAlignment="Stretch" Margin="8">
+              <Border Padding="10,6" CornerRadius="4"
+                      Background="#F0FFF4E5" BorderBrush="#FFE0B77A" BorderThickness="1"
+                      Visibility="{Binding IsInterpretationOverridden, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding OverrideWarning}" TextWrapping="Wrap" Foreground="#FF7A4E00" />
+              </Border>
+
+              <Border Padding="10,6" CornerRadius="4" Margin="0,6,0,0"
+                      Background="#F0EDF3FF" BorderBrush="#FF9BB4E0" BorderThickness="1"
+                      Visibility="{Binding IsStagePartial, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                  <TextBlock Text="{Binding StageWarning}" TextWrapping="Wrap" Foreground="#FF204070" />
+                  <!-- その段の値をどう絵にしたのかを併記します。写し方を知らないまま見ると、
+                       「色がおかしい」としか読めません。 -->
+                  <TextBlock Text="{Binding StageMapping}" TextWrapping="Wrap" Margin="0,4,0,0"
+                             FontSize="11" Foreground="#FF44618F" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
 
             <TextBlock Text="{Binding UnsupportedMessage}"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
