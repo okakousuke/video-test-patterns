@@ -62,7 +62,9 @@ public readonly record struct PreviewRenderOptions(
     ColorInterpretation Interpretation,
     ChannelMask Channels,
     ChromaUpsample Upsample,
-    bool RawCodeGray = false)
+    bool RawCodeGray = false,
+    PipelineStage Stage = PipelineStage.Display,
+    bool MarkOutOfRange = false)
 {
     public static PreviewRenderOptions Default(ColorInterpretation interpretation) =>
         new(interpretation, ChannelMask.All, ChromaUpsample.Nearest);
@@ -77,6 +79,10 @@ public readonly record struct PreviewRenderOptions(
     /// 色変換を通すと range のぶん伸縮するため、画面の明るさと成分のコード値が一致しなくなります。
     /// 「この面はいくつか」を見たいときは変換を通さないほうが読めるので、別の切り替えにしてあります。
     /// 2つ以上選んでいるときは、どの成分の値を濃淡にするのか決まらないので使いません。
+    ///
+    /// 途中の段で止めているときも使いません。<b>段そのものが「どの段の値を見るか」を決めている</b>ので、
+    /// そこへ「色変換を通さない」という別の指定を重ねると、何を見ているのか言えなくなります。
+    /// 1・2段目で成分を1つだけ選んだときの絵は、この指定と同じ（コード値の濃淡）になります。
     /// </summary>
-    public bool UseRawCodeGray => RawCodeGray && SelectedCount == 1;
+    public bool UseRawCodeGray => RawCodeGray && SelectedCount == 1 && Stage == PipelineStage.Display;
 }

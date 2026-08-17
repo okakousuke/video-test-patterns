@@ -327,7 +327,14 @@ public sealed class MainViewModel : ObservableObject
         set { if (Set(ref _rawCodeGray, value)) Rerender(); }
     }
 
-    public bool CanUseRawCodeGray => BitOperations.PopCount((uint)_channels) == 1;
+    /// <summary>
+    /// 成分が1つのときにしか意味を持たず、途中の段で止めているときも使いません。
+    /// 段そのものが「どの段の値を見るか」を決めているので、そこへ
+    /// 「色変換を通さない」という別の指定を重ねると、何を見ているのか言えなくなります。
+    /// 1・2段目で成分を1つに絞れば、同じ絵（コード値の濃淡）になります。
+    /// </summary>
+    public bool CanUseRawCodeGray =>
+        BitOperations.PopCount((uint)_channels) == 1 && _selectedStage.Stage == PipelineStage.Display;
 
     /// <summary>成分ボタンの表示名です。色モデルで呼び名が変わります。</summary>
     private string _firstChannelLabel = "R";
@@ -354,6 +361,84 @@ public sealed class MainViewModel : ObservableObject
 
     public bool IsNearestUpsample { get => _upsample == ChromaUpsample.Nearest; set { if (value) Upsample = ChromaUpsample.Nearest; } }
     public bool IsBilinearUpsample { get => _upsample == ChromaUpsample.Bilinear; set { if (value) Upsample = ChromaUpsample.Bilinear; } }
+
+    // --- 変換の段 ---
+    //
+    // 右下には変換の手順を文章で出しています。ただし文章は「そう書いてある」だけで、
+    // どの段で何が変わったのかは絵になっていません。色がずれているとき、それが
+    // 色差を戻した段の話なのか、正規化の段なのか、matrix の段なのかは、
+    // 途中を出さないかぎり切り分けられません。段を選ぶと、そこで止めた値が画面に出ます。
+    //
+    // 段の並びは**選んだRAWによって変わります**。4:4:4 に「色差を戻す段」はありませんし、
+    // RGB には正規化と matrix の段がありません。切り替えても絵が変わらない段を並べると、
+    // 「効いていない」のか「そういう段」なのかが区別できなくなります。
+
+    public ObservableCollection<PipelineStageOption> Stages { get; } = [];
+
+    private PipelineStageOption _selectedStage = PipelineStages.Option(PipelineStage.Display);
+    public PipelineStageOption SelectedStage
+    {
+        get => _selectedStage;
+        set
+        {
+            if (!Set(ref _selectedStage, value)) return;
+            Raise(nameof(IsStagePartial));
+            Raise(nameof(StageWarning));
+            Raise(nameof(StageMapping));
+            Raise(nameof(CanUseRawCodeGray));
+            Raise(nameof(CanMarkOutOfRange));
+            Rerender();
+        }
+    }
+
+    /// <summary>Y'CbCr のときだけ段の切り替えに意味があります（RGB は取り出して量子化するだけです）。</summary>
+    public bool HasStages => Stages.Count > 1;
+
+    /// <summary>既定（最後の段）以外で止めているかどうか。止めているあいだは画面で警告します。</summary>
+    public bool IsStagePartial => _rawImage is not null && _selectedStage.Stage != PipelineStage.Display;
+
+    public string StageWarning => IsStagePartial
+        ? $"変換を「{_selectedStage.Label}」で止めた値を出しています。"
+          + "これは最後まで通した絵ではありません。色として読まないでください。"
+        : "";
+
+    /// <summary>その段の値をどう絵にしたのか。段ごとに写し方が違うので、選ぶたびに出します。</summary>
+    public string StageMapping => _selectedStage.Mapping;
+
+    /// <summary>
+    /// 範囲外（0-1 の外）に出た画素を色で示すかどうかです。
+    ///
+    /// 丸めたあとの絵では、0 未満も 1 超も同じ黒・同じ白になります。
+    /// 「もともとその値だった」のか「潰れた結果そう見えている」のかは、
+    /// 丸める前を見ないかぎり区別できません。
+    /// </summary>
+    private bool _markOutOfRange;
+    public bool MarkOutOfRange
+    {
+        get => _markOutOfRange;
+        set { if (Set(ref _markOutOfRange, value)) Rerender(); }
+    }
+
+    /// <summary>
+    /// 1・2段目のコード値は、格納できる範囲の中にしか入りません
+    /// （0-255 や 0-1023 を超える値は書き込めません）。範囲外が出ようがない段では押せなくします。
+    /// </summary>
+    public bool CanMarkOutOfRange => PipelineStages.SupportsRangeMarking(_selectedStage.Stage);
+
+    /// <summary>段の一覧を、開いたRAWに存在するものへ入れ替えます。</summary>
+    private void RebuildStages(RawImage image)
+    {
+        Stages.Clear();
+        foreach (var option in image.Stages) Stages.Add(option);
+        _selectedStage = Stages[^1]; // 既定は最後の段（＝いつもの表示）です。
+        Raise(nameof(Stages));
+        Raise(nameof(HasStages));
+        Raise(nameof(SelectedStage));
+        Raise(nameof(IsStagePartial));
+        Raise(nameof(StageWarning));
+        Raise(nameof(StageMapping));
+        Raise(nameof(CanMarkOutOfRange));
+    }
 
     /// <summary>Y'CbCr のときだけ matrix / range / 色差の戻し方が効きます。</summary>
     private bool _isYcbcrSelected;
@@ -408,10 +493,16 @@ public sealed class MainViewModel : ObservableObject
             + $"（{m.BitDepth}bit: 0-{_rawImage.MaxCode}）",
         };
 
+        // 手順の何行目がどの段にあたるかを覚えておきます。
+        // 止めている段を、説明の中のその行そのものへ書き足すためです。
+        // 末尾にまとめて書くと、手順を読んでいる目の動きと、止めた場所が離れます。
+        var stageLine = new Dictionary<PipelineStage, int> { [PipelineStage.Codes] = lines.Count - 1 };
+
         var step = 2;
 
         if (_rawImage.HasSubsampledChroma)
         {
+            stageLine[PipelineStage.Chroma] = lines.Count;
             var how = _upsample == ChromaUpsample.Nearest
                 ? "最近傍（格納されている値をそのまま複製）"
                 : "バイリニア（隣り合うサンプルの間を線形補間）";
@@ -420,6 +511,7 @@ public sealed class MainViewModel : ObservableObject
 
         if (m.IsYcbcr)
         {
+            stageLine[PipelineStage.Normalized] = lines.Count;
             var shift = 1 << (_rawImage.BitDepth - 8);
             if (ManifestInfo.Same(_selectedRange, "limited"))
             {
@@ -438,6 +530,7 @@ public sealed class MainViewModel : ObservableObject
 
             var (kr, kb) = new ColorInterpretation(_selectedMatrix, _selectedRange).Coefficients;
             var kg = 1.0 - kr - kb;
+            stageLine[PipelineStage.Rgb] = lines.Count;
             lines.Add($"{step++}. matrix={_selectedMatrix} でRGBへ戻す"
                 + $"（Kr={kr}, Kb={kb}, Kg={kg:0.####}）");
             lines.Add("      R = Y + 2(1-Kr)・Cr");
@@ -449,7 +542,28 @@ public sealed class MainViewModel : ObservableObject
             lines.Add($"{step++}. コード値を 0-1 へ正規化する（値 / {_rawImage.MaxCode}）");
         }
 
+        stageLine[PipelineStage.Display] = lines.Count;
         lines.Add($"{step++}. 0-1 に丸めてから 8bit（0-255）へ量子化し、画面へ出す");
+
+        // 止めている段は、手順のその行に印を付けます。どこまで通したのかが、
+        // 手順を読んでいる目の位置でそのまま分かります。
+        if (IsStagePartial && stageLine.TryGetValue(_selectedStage.Stage, out var marked))
+        {
+            lines[marked] += "　◀ ここで止めています";
+            lines.Add("");
+            lines.Add($"※ 「{_selectedStage.Label}」で止めた値を出しています。この先の段は通していません。");
+            foreach (var part in _selectedStage.Mapping.Split('／'))
+                lines.Add("   " + part.Trim());
+        }
+
+        if (_markOutOfRange && CanMarkOutOfRange)
+        {
+            lines.Add("");
+            lines.Add("※ 範囲外に出た画素を色で示しています。");
+            lines.Add("   絵のほうは無彩色にしています。元の色を残したまま色を重ねると、");
+            lines.Add("   もともと赤い画素と、範囲外だから赤くした画素が見分けられないためです。");
+            lines.Add("   赤 = 上へ外れた、青 = 下へ外れた、マゼンタ = 成分によって上下どちらへも出た。");
+        }
 
         if (_channels != ChannelMask.All)
         {
@@ -538,7 +652,8 @@ public sealed class MainViewModel : ObservableObject
     }
 
     private PreviewRenderOptions CurrentOptions =>
-        new(new ColorInterpretation(_selectedMatrix, _selectedRange), _channels, _upsample, _rawCodeGray);
+        new(new ColorInterpretation(_selectedMatrix, _selectedRange), _channels, _upsample, _rawCodeGray,
+            _selectedStage.Stage, _markOutOfRange);
 
     /// <summary>表示条件を manifest の記録へ戻します。</summary>
     private void ResetInterpretation()
@@ -557,6 +672,8 @@ public sealed class MainViewModel : ObservableObject
         _channels = ChannelMask.All;
         _rawCodeGray = false;
         _upsample = ChromaUpsample.Nearest;
+        _markOutOfRange = false;
+        RebuildStages(image);
 
         var (first, second, third) = image.ChannelLabels;
         FirstChannelLabel = first;
@@ -578,6 +695,7 @@ public sealed class MainViewModel : ObservableObject
         Raise(nameof(CanUseRawCodeGray));
         Raise(nameof(IsNearestUpsample));
         Raise(nameof(IsBilinearUpsample));
+        Raise(nameof(MarkOutOfRange));
     }
 
     /// <summary>表示条件を変えたときに、同じRAWから絵を作り直します。</summary>
@@ -585,6 +703,8 @@ public sealed class MainViewModel : ObservableObject
     {
         Raise(nameof(IsInterpretationOverridden));
         Raise(nameof(OverrideWarning));
+        Raise(nameof(IsStagePartial));
+        Raise(nameof(StageWarning));
         UpdatePreviewRecipe();
 
         if (_rawImage is null) return;
@@ -1406,6 +1526,8 @@ public sealed class MainViewModel : ObservableObject
     private void ClearSelection()
     {
         Groups.Clear();
+        Stages.Clear();
+        Raise(nameof(HasStages));
         Parameters.Clear();
         SelectedParameter = null;
         PreviewImage = null;
@@ -1530,6 +1652,11 @@ public sealed class MainViewModel : ObservableObject
             if (CurrentOptions.UseRawCodeGray) parts.Add("code");
             if (_upsample == ChromaUpsample.Bilinear) parts.Add("bilinear");
 
+            // 途中の段で止めた絵は、最後まで通した絵とは別物です。名前が同じだと、
+            // あとから見て「色が変」としか言えないものが混ざります。
+            if (PipelineStages.FileToken(_selectedStage.Stage) is { Length: > 0 } stage) parts.Add(stage);
+            if (_markOutOfRange && CanMarkOutOfRange) parts.Add("range");
+
             return parts.Count == 0 ? "" : "_" + string.Join("-", parts);
         }
     }
@@ -1554,6 +1681,11 @@ public sealed class MainViewModel : ObservableObject
 
         if (CurrentOptions.UseRawCodeGray) parts.Add("コード値をそのまま濃淡へ");
         if (_upsample == ChromaUpsample.Bilinear) parts.Add("色差を線形補間");
+
+        // 途中の段で止めているなら、それがいちばん先に言うべきことです。
+        // 「色が違う画像」ではなく「最後まで通していない画像」が出てきます。
+        if (IsStagePartial) parts.Insert(0, $"変換を「{_selectedStage.Label}」で止めた値");
+        if (_markOutOfRange && CanMarkOutOfRange) parts.Add("範囲外を色で表示（絵は無彩色）");
 
         return parts.Count == 0 ? "manifest のとおりの解釈" : string.Join("・", parts);
     }

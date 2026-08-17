@@ -183,13 +183,55 @@ public sealed class RawImage
     public (string First, string Second, string Third) ChannelLabels =>
         _isYcbcr ? ("Y'", "Cb", "Cr") : ("R", "G", "B");
 
+    /// <summary>そのRAWに存在する変換の段です。色モデルと色差の間引きで変わります。</summary>
+    public IReadOnlyList<PipelineStageOption> Stages => PipelineStages.For(_isYcbcr, HasSubsampledChroma);
+
+    /// <summary>
+    /// 指定された段が、このRAWに存在するかどうかです。
+    /// 別のRAWを開いたときに、前のRAWにしか無い段が選ばれたままになるのを防ぎます。
+    /// </summary>
+    public bool HasStage(PipelineStage stage) => Stages.Any(option => option.Stage == stage);
+
+    /// <summary>
+    /// 実際に使う段です。存在しない段を指定されたら、いちばん近い意味の段へ寄せます。
+    /// 黙って既定へ戻すと、RAWを選び直すたびに段が外れて理由が分かりません。
+    /// </summary>
+    private PipelineStage EffectiveStage(PreviewRenderOptions options)
+    {
+        if (!_isYcbcr) return PipelineStage.Display;
+        // 4:4:4 に「色差を戻す段」はありません。戻す相手が無いので1段目と同じ値です。
+        if (options.Stage == PipelineStage.Chroma && !HasSubsampledChroma) return PipelineStage.Codes;
+        return options.Stage;
+    }
+
+    /// <summary>
+    /// その段で使う色差の戻し方です。
+    /// 1段目は「格納されたまま」なので、バイリニアを選んでいても補間しません。
+    /// ここで補間してしまうと、1段目と2段目の差（＝戻し方が絵に効く量）が消えます。
+    /// </summary>
+    private static ChromaUpsample StageUpsample(PipelineStage stage, PreviewRenderOptions options) =>
+        stage == PipelineStage.Codes ? ChromaUpsample.Nearest : options.Upsample;
+
+    /// <summary>
+    /// 画面に出す1画素です。<b>プレビューもピクセルプローブもここを通ります。</b>
+    /// 段ごとに別の描き方を持たせると、絵と数値が食い違っても気付けません。
+    /// </summary>
+    public (byte R, byte G, byte B) RenderPixel(int x, int y, PreviewRenderOptions options)
+    {
+        var stage = EffectiveStage(options);
+        var (first, second, third) = ReadCodes(x, y, StageUpsample(stage, options));
+        return ToRgb(first, second, third, options, stage);
+    }
+
     /// <summary>指定画素の、コード値と表示RGBを対にして返します。</summary>
     public PixelSample Sample(int x, int y, PreviewRenderOptions options)
     {
-        var (first, second, third) = ReadCodes(x, y, options.Upsample);
-        var (r, g, b) = ToRgb(first, second, third, options);
+        var stage = EffectiveStage(options);
+        var upsample = StageUpsample(stage, options);
+        var (first, second, third) = ReadCodes(x, y, upsample);
+        var (r, g, b) = ToRgb(first, second, third, options, stage);
         var (l1, l2, l3) = ChannelLabels;
-        var interpolated = options.Upsample == ChromaUpsample.Bilinear && HasSubsampledChroma;
+        var interpolated = upsample == ChromaUpsample.Bilinear && HasSubsampledChroma;
         return new PixelSample(x, y, l1, l2, l3, first, second, third, MaxCode, r, g, b, interpolated);
     }
 
@@ -200,14 +242,16 @@ public sealed class RawImage
     {
         var buffer = new byte[checked(Width * Height * 4)];
         var stride = Width * 4;
+        var stage = EffectiveStage(options);
+        var upsample = StageUpsample(stage, options);
 
         for (var y = 0; y < Height; y++)
         {
             var rowStart = y * stride;
             for (var x = 0; x < Width; x++)
             {
-                var (first, second, third) = ReadCodes(x, y, options.Upsample);
-                var (r, g, b) = ToRgb(first, second, third, options);
+                var (first, second, third) = ReadCodes(x, y, upsample);
+                var (r, g, b) = ToRgb(first, second, third, options, stage);
                 var target = rowStart + x * 4;
                 buffer[target] = b;
                 buffer[target + 1] = g;
@@ -293,7 +337,7 @@ public sealed class RawImage
             : (int)Math.Round(MaxCode * 0.5);
     }
 
-    private (byte R, byte G, byte B) ToRgb(int first, int second, int third, PreviewRenderOptions options)
+    private (byte R, byte G, byte B) ToRgb(int first, int second, int third, PreviewRenderOptions options, PipelineStage stage)
     {
         // 成分を1つだけ選び、かつコード値のまま見る指定のときは、色変換を通しません。
         // 通すと range のぶん伸縮して、見たい成分の値と画面の明るさが一致しなくなるためです。
@@ -311,12 +355,50 @@ public sealed class RawImage
 
         // 選ばなかった成分は中立値へ置き換えてから、いつもどおり変換します。
         // 落とすのではなく置き換えるのは、成分どうしの関係を保ったまま1つだけ抜くためです。
+        // 置き換えは段によらず先にやります。どの段の値を見るときも、
+        // 「抜いた成分は中立値だった」という前提は同じだからです。
         if (!options.Channels.HasFlag(ChannelMask.First)) first = NeutralCode(0, options);
         if (!options.Channels.HasFlag(ChannelMask.Second)) second = NeutralCode(1, options);
         if (!options.Channels.HasFlag(ChannelMask.Third)) third = NeutralCode(2, options);
 
-        if (!_isYcbcr)
+        // 1・2段目はコード値そのものです。色変換を通していないので、色として読んではいけません。
+        if (stage is PipelineStage.Codes or PipelineStage.Chroma)
+        {
+            // 成分を1つに絞っているなら、その面の値をそのまま濃淡にします
+            // （「コード値」の指定と同じ絵です。どちらの入口から来ても同じ値を出します）。
+            if (options.SelectedCount == 1)
+            {
+                var only = options.Channels switch
+                {
+                    ChannelMask.First => first,
+                    ChannelMask.Second => second,
+                    _ => third,
+                };
+                var flat = ToByte(only / (double)MaxCode);
+                return (flat, flat, flat);
+            }
+
             return (ToByte(first / (double)MaxCode), ToByte(second / (double)MaxCode), ToByte(third / (double)MaxCode));
+        }
+
+        var (a, b2, c, over, under) = StageValues(first, second, third, options, stage);
+
+        if (options.MarkOutOfRange && PipelineStages.SupportsRangeMarking(stage))
+            return MarkRange(a, b2, c, over, under, options, stage);
+
+        return (ToByte(a), ToByte(b2), ToByte(c));
+    }
+
+    /// <summary>
+    /// その段の値と、0-1（色差は ±0.5）の外へ出ているかどうかを返します。
+    /// 返す3つは<b>画面へ写したあとの値</b>で、まだ丸めていません。
+    /// 丸める前の値を持っておかないと、「潰れた」のか「もともとその値だった」のかが区別できません。
+    /// </summary>
+    private (double A, double B, double C, bool Over, bool Under) StageValues(
+        int first, int second, int third, PreviewRenderOptions options, PipelineStage stage)
+    {
+        if (!_isYcbcr)
+            return (first / (double)MaxCode, second / (double)MaxCode, third / (double)MaxCode, false, false);
 
         var (kr, kb) = options.Interpretation.Coefficients;
         var kg = 1.0 - kr - kb;
@@ -327,10 +409,66 @@ public sealed class RawImage
         var cb = options.Interpretation.IsLimited ? (second - 128.0 * shift) / (224.0 * shift) : (second - 128.0 * shift) / peak;
         var cr = options.Interpretation.IsLimited ? (third - 128.0 * shift) / (224.0 * shift) : (third - 128.0 * shift) / peak;
 
+        if (stage == PipelineStage.Normalized)
+            // Cb・Cr は 0 を中心に ±0.5 で振れる値なので、濃淡にするには +0.5 します。
+            // そのままだと負の側が全部黒へ潰れて、振れの向きが読めません。
+            return (y, cb + 0.5, cr + 0.5,
+                Above(y) || Above(cb + 0.5) || Above(cr + 0.5),
+                Below(y) || Below(cb + 0.5) || Below(cr + 0.5));
+
         var r = y + 2.0 * (1.0 - kr) * cr;
         var b = y + 2.0 * (1.0 - kb) * cb;
         var g = (y - kr * r - kb * b) / kg;
-        return (ToByte(r), ToByte(g), ToByte(b));
+        return (r, g, b,
+            Above(r) || Above(g) || Above(b),
+            Below(r) || Below(g) || Below(b));
+    }
+
+    // 範囲外に数えはじめる幅です。画面の 1 コード値（1/255）ぶんだけ余裕を持たせています。
+    //
+    // 0 を少しでも外れたら数える、にはできません。**正常なカラーバーが一面に光ります。**
+    // 生成側は RGB から Y'CbCr を作るときに整数へ丸めているので、戻すと必ず端数が出ます。
+    // 手元の 8bit limited / BT.709 カラーバーで測ると、はみ出しは最大 0.00201 でした
+    // （8bit の 1 コード = 0.00392 の半分ほど）。これは丸めれば同じ値になる量です。
+    //
+    // 一方、range や matrix を取り違えたときのはみ出しは桁が違います。同じカラーバーで
+    // full を limited として読むと最大 0.094、bt709 を bt601 として読むと最大 0.174 でした。
+    // 1 コード値を境にすると、記録どおりに読んだときの範囲外は 0 画素、
+    // 取り違えたときは全画素ないし彩度の高いバー全部、という分かれ方になります。
+    private const double RangeEpsilon = 1.0 / 255.0;
+
+    private static bool Above(double value) => value > 1.0 + RangeEpsilon;
+
+    private static bool Below(double value) => value < -RangeEpsilon;
+
+    /// <summary>
+    /// 範囲外の画素を色で示します。
+    ///
+    /// <b>絵のほうは無彩色にします。</b> 元の色を残したまま赤や青を重ねると、
+    /// 「もともと赤い画素」と「範囲外だから赤くした画素」が見分けられません。
+    /// 無彩色の上なら、飽和した赤・青・マゼンタはこの表示でしか出ません。
+    /// </summary>
+    private (byte R, byte G, byte B) MarkRange(
+        double a, double b, double c, bool over, bool under, PreviewRenderOptions options, PipelineStage stage)
+    {
+        if (over && under) return (255, 0, 255); // 成分によって上下どちらへも出ている
+        if (over) return (255, 0, 0);
+        if (under) return (0, 0, 255);
+
+        // 正規化の段では1つ目がそのまま輝度です。RGBの段は matrix の係数で輝度に落とします。
+        double luma;
+        if (stage == PipelineStage.Normalized)
+        {
+            luma = a;
+        }
+        else
+        {
+            var (kr, kb) = options.Interpretation.Coefficients;
+            luma = kr * a + (1.0 - kr - kb) * b + kb * c;
+        }
+
+        var gray = ToByte(luma);
+        return (gray, gray, gray);
     }
 
     private int ReadCode(int offset, string? alignment)
