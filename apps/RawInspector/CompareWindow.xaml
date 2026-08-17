@@ -1,0 +1,157 @@
+<Window x:Class="RawInspector.CompareWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="2枚を突き合わせる" Icon="app.ico"
+        Height="820" Width="960" MinHeight="520" MinWidth="720"
+        Background="{StaticResource WindowBackground}"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- ApplicationCommands.Help は F1 を最初から持っているので、キーの割り当ては書きません。 -->
+  <Window.InputBindings>
+    <KeyBinding Key="F5" Command="{Binding CompareCommand}" />
+  </Window.InputBindings>
+
+  <Window.CommandBindings>
+    <CommandBinding Command="Help" Executed="OnHelpExecuted" />
+  </Window.CommandBindings>
+
+  <DockPanel Margin="10">
+
+    <!-- 上: 何と何を、どう読んで比べているか。
+         差の数字より先にこれが目に入る位置でないと、
+         「どちらの条件のせいで出た差なのか」が分からなくなります。 -->
+    <Border DockPanel.Dock="Top" Padding="10,8" CornerRadius="4" Margin="0,0,0,8"
+            Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+      <StackPanel>
+        <DockPanel Margin="0,0,0,6">
+          <Button DockPanel.Dock="Right" Content="？" Width="34" MinWidth="34" Margin="6,0,0,0"
+                  Command="Help" ToolTip="この窓の使い方を開きます（F1）。" />
+          <Button DockPanel.Dock="Right" Content="⟳ 突き合わせる" Margin="0"
+                  Command="{Binding CompareCommand}"
+                  ToolTip="いまの左右で数え直します（F5）。" />
+          <TextBlock DockPanel.Dock="Left" Text="相手" VerticalAlignment="Center" Margin="0,0,6,0"
+                     Foreground="{StaticResource MutedText}" />
+          <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}"
+                    DisplayMemberPath="Title" VerticalAlignment="Center" Margin="0,0,8,0"
+                    ToolTip="突き合わせる相手です。開いているフォルダにある、同じ大きさのRAWだけが並びます。" />
+        </DockPanel>
+
+        <TextBlock Text="{Binding NoCandidateNote}" TextWrapping="Wrap" FontSize="11"
+                   Foreground="#FF7A4E00" Margin="0,0,0,4"
+                   Visibility="{Binding HasCandidates, Converter={StaticResource InverseBoolToVisibility}}" />
+
+        <TextBlock Text="{Binding LeftReading}" FontSize="11" Foreground="{StaticResource MutedText}"
+                   TextWrapping="Wrap" />
+        <TextBlock Text="{Binding RightReading}" FontSize="11" Foreground="{StaticResource MutedText}"
+                   TextWrapping="Wrap" Margin="0,2,0,0" />
+        <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{StaticResource MutedText}"
+                   TextWrapping="Wrap" Margin="0,2,0,0" />
+      </StackPanel>
+    </Border>
+
+    <!-- 何で比べるか -->
+    <Border DockPanel.Dock="Top" Padding="10,6" CornerRadius="4" Margin="0,0,0,8"
+            Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+      <StackPanel>
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="比べる値" VerticalAlignment="Center" Margin="0,0,8,0"
+                     Foreground="{StaticResource MutedText}" />
+          <RadioButton Content="表示RGB" GroupName="Domain" Style="{StaticResource ToolToggle}"
+                       IsChecked="{Binding IsDisplayDomain, Mode=TwoWay}"
+                       ToolTip="8bit へ変換したあとの値どうしを比べます。見え方の差です。" />
+          <RadioButton Content="コード値" GroupName="Domain" Style="{StaticResource ToolToggle}"
+                       IsChecked="{Binding IsCodesDomain, Mode=TwoWay}"
+                       IsEnabled="{Binding CanCompareCodes}"
+                       ToolTip="RAWから読んだ生の値どうしを比べます。データの差です。ビット深度と成分の意味が同じときだけ押せます。" />
+
+          <TextBlock Text="差の倍率" VerticalAlignment="Center" Margin="16,0,8,0"
+                     Foreground="{StaticResource MutedText}" />
+          <ComboBox ItemsSource="{Binding Amplifications}" SelectedItem="{Binding Amplification}"
+                    Width="64" VerticalAlignment="Center"
+                    ToolTip="差の絵を何倍にして出すかです。1コード値の差は 1/255 の明るさなので、そのままだと黒と見分けが付きません。" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding DomainNote}" TextWrapping="Wrap" FontSize="11"
+                   Foreground="{StaticResource MutedText}" Margin="0,4,0,0" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+
+        <!-- 一致したときは、そう言い切ります。
+             差の絵が真っ黒なのは「一致した」でも「倍率が足りない」でも同じ見え方なので、
+             絵だけに判断させません。 -->
+        <Border Padding="10,8" CornerRadius="4" Margin="0,0,0,8"
+                Background="#FFEAF6EA" BorderBrush="#FF9BC79B" BorderThickness="1"
+                Visibility="{Binding IsIdentical, Converter={StaticResource BoolToVisibility}}">
+          <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Foreground="#FF1F5C1F"
+                     FontWeight="SemiBold" />
+        </Border>
+
+        <Border Padding="10,8" CornerRadius="4" Margin="0,0,0,8"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                Visibility="{Binding IsIdentical, Converter={StaticResource InverseBoolToVisibility}}">
+          <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+        </Border>
+
+        <!-- 並置。左右の絵は、それぞれの読み方で作ったものです。 -->
+        <Grid Margin="0,0,0,10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0" Margin="0,0,5,0">
+            <TextBlock Text="{Binding LeftTitle}" FontSize="11" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding LeftTitle}" Margin="0,0,0,2" />
+            <Border Background="#FF1E1E1E" Height="220">
+              <Image Source="{Binding LeftImage}" Stretch="Uniform"
+                     RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            </Border>
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Margin="5,0,0,0">
+            <TextBlock Text="{Binding RightTitle}" FontSize="11" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding RightTitle}" Margin="0,0,0,2" />
+            <Border Background="#FF1E1E1E" Height="220">
+              <Image Source="{Binding RightImage}" Stretch="Uniform"
+                     RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            </Border>
+          </StackPanel>
+        </Grid>
+
+        <!-- 差 -->
+        <TextBlock Style="{StaticResource SectionHeader}" Text="差" />
+        <TextBlock Text="{Binding AmplificationNote}" TextWrapping="Wrap" FontSize="11"
+                   Foreground="{StaticResource MutedText}" Margin="0,0,0,4" />
+        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource MutedText}"
+                   Margin="0,0,0,6"
+                   Text="成分ごとの差を R・G・B の位置へ置いています。赤いところは1つ目の成分だけがずれている、という読み方です。" />
+        <Border Background="#FF101010" Height="300" Margin="0,0,0,10">
+          <Image Source="{Binding DiffImage}" Stretch="Uniform"
+                 RenderOptions.BitmapScalingMode="NearestNeighbor" />
+        </Border>
+
+        <!-- 数値。最大差だけでは、1画素なのか全面なのかが分かりません。 -->
+        <TextBlock Style="{StaticResource SectionHeader}" Text="数値" />
+        <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  Background="White" RowBackground="White"
+                  CanUserSortColumns="False" HorizontalScrollBarVisibility="Disabled">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="成分" Binding="{Binding Label}" Width="70" />
+            <DataGridTextColumn Header="最大差" Binding="{Binding Max}" Width="90" />
+            <DataGridTextColumn Header="平均差" Binding="{Binding Mean}" Width="90" />
+            <DataGridTextColumn Header="差のある画素" Binding="{Binding Different}" Width="*" />
+            <DataGridTextColumn Header="最大差の座標" Binding="{Binding Where}" Width="140" />
+          </DataGrid.Columns>
+        </DataGrid>
+
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
