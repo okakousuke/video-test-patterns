@@ -17,12 +17,12 @@ namespace RawInspector.ViewModels;
 /// </summary>
 public sealed class ScopeViewModel : ObservableObject
 {
-    private readonly Func<ScopeTarget?> _provider;
+    private readonly Func<InspectionTarget?> _provider;
 
     /// <summary>いま出している数字が、どのRAWをどの条件で数えたものか。</summary>
-    private ScopeTarget? _measured;
+    private InspectionTarget? _measured;
 
-    public ScopeViewModel(Func<ScopeTarget?> provider)
+    public ScopeViewModel(Func<InspectionTarget?> provider)
     {
         _provider = provider;
         RefreshCommand = new RelayCommand(() => Refresh(), () => !_isBusy);
@@ -509,12 +509,6 @@ public sealed class ScopeViewModel : ObservableObject
         return bitmap;
     }
 }
-
-/// <summary>
-/// 分布を数える相手です。RAWと、そのときの読み方をひとまとめにします。
-/// 別々に渡すと、あるRAWの数字を別の条件の説明と一緒に出してしまえます。
-/// </summary>
-public sealed record ScopeTarget(RawImage Image, string Title, PreviewRenderOptions Options);
 
 /// <summary>波形に出す成分の選択肢です。</summary>
 public sealed record WaveformChannelOption(ChannelMask Channel, string Label)

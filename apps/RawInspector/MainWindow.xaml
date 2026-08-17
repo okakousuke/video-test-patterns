@@ -127,6 +127,7 @@
     <KeyBinding Key="F1" Command="{Binding ShowHelpCommand}" />
     <KeyBinding Key="F5" Command="{Binding RefreshFolderCommand}" />
     <KeyBinding Key="F7" Command="{Binding ShowScopeCommand}" />
+    <KeyBinding Key="F8" Command="{Binding ShowCompareCommand}" />
     <KeyBinding Key="F11" Command="{Binding ToggleFullScreenCommand}" />
     <KeyBinding Key="Escape" Command="{Binding ExitFullScreenCommand}" />
     <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ActualSizeCommand}" />
@@ -545,6 +546,9 @@
                        別の窓にしているのは、絵と分布を並べて見たいためです。 -->
                   <Button Content="📊 分布..." Command="{Binding ShowScopeCommand}"
                           ToolTip="RAWを1本選ぶと押せます。全画素を数えて、ヒストグラム・波形・ベクトルと、規定の範囲を外れた画素の数を出します（F7）。絵と並べて見られるよう別の窓で開きます。" />
+                  <!-- 2枚の突き合わせ。並べて見るだけでは「同じに見える」までしか言えません。 -->
+                  <Button Content="⇔ 比較..." Command="{Binding ShowCompareCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。同じ大きさの別のRAW（または同じRAWを manifest の記録どおりに読んだもの）と突き合わせて、差を数えます（F8）。" />
                   <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
                           ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"

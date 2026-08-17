@@ -24,6 +24,7 @@ public partial class MainWindow : Window
         _viewModel.RequestGenerator = OpenGenerator;
         _viewModel.RequestHelp = document => HelpWindow.ShowDocument(this, document);
         _viewModel.RequestScope = OpenScope;
+        _viewModel.RequestCompare = OpenCompare;
 
         _viewModel.FitRequested += (_, _) => Dispatcher.BeginInvoke(Fit, DispatcherPriority.Loaded);
         _viewModel.PropertyChanged += (_, e) =>
@@ -39,7 +40,12 @@ public partial class MainWindow : Window
             if (e.PropertyName is nameof(MainViewModel.PreviewImage)
                 or nameof(MainViewModel.SelectedMatrix)
                 or nameof(MainViewModel.SelectedRange)
-                or nameof(MainViewModel.Upsample)) _scopeWindow?.NotifyTargetChanged();
+                or nameof(MainViewModel.Upsample))
+            {
+                _scopeWindow?.NotifyTargetChanged();
+                // 比較の窓へは、候補を集め直させます（開いているRAWが変われば、相手の一覧も変わります）。
+                if (e.PropertyName == nameof(MainViewModel.PreviewImage)) _compareWindow?.NotifyTargetChanged();
+            }
         };
         RestoreLayout();
 
@@ -303,6 +309,27 @@ public partial class MainWindow : Window
     /// </summary>
     private ScopeWindow? _scopeWindow;
 
+    /// <summary>
+    /// 2枚を突き合わせる窓を開きます。分布の窓と同じで、閉じるまで使い回します。
+    /// </summary>
+    private CompareWindow? _compareWindow;
+
+    private void OpenCompare()
+    {
+        if (_compareWindow is { IsLoaded: true })
+        {
+            _compareWindow.Activate();
+            return;
+        }
+
+        _compareWindow = new CompareWindow(
+            () => _viewModel.CurrentTarget,
+            _viewModel.BuildCompareCandidates,
+            _viewModel.LoadCompareCandidate) { Owner = this };
+        _compareWindow.Closed += (_, _) => _compareWindow = null;
+        _compareWindow.Show();
+    }
+
     private void OpenScope()
     {
         if (_scopeWindow is { IsLoaded: true })
@@ -311,7 +338,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _scopeWindow = new ScopeWindow(() => _viewModel.CurrentScopeTarget) { Owner = this };
+        _scopeWindow = new ScopeWindow(() => _viewModel.CurrentTarget) { Owner = this };
         _scopeWindow.Closed += (_, _) => _scopeWindow = null;
         _scopeWindow.Show();
     }

@@ -17,7 +17,7 @@ public partial class ScopeWindow : Window
 {
     private readonly ScopeViewModel _viewModel;
 
-    public ScopeWindow(Func<ScopeTarget?> provider)
+    public ScopeWindow(Func<InspectionTarget?> provider)
     {
         InitializeComponent();
         _viewModel = new ScopeViewModel(provider);

@@ -75,6 +75,7 @@ public sealed class MainViewModel : ObservableObject
         ShowHelpCommand = new RelayCommand(() =>
             RequestHelp?.Invoke(ShowDashboard ? HelpLibrary.Launcher : HelpLibrary.Viewer));
         ShowScopeCommand = new RelayCommand(() => RequestScope?.Invoke(), () => HasPreview);
+        ShowCompareCommand = new RelayCommand(() => RequestCompare?.Invoke(), () => HasPreview);
         ToggleFullScreenCommand = new RelayCommand(() => IsFullScreen = !IsFullScreen, () => HasPreview);
         ExitFullScreenCommand = new RelayCommand(() => IsFullScreen = false, () => IsFullScreen);
         ExpandAllCommand = new RelayCommand(() => SetAllGroupsExpanded(true));
@@ -132,9 +133,68 @@ public sealed class MainViewModel : ObservableObject
     /// 分布の窓へ渡す相手です。<b>いま選んでいるRAWと、いまの読み方を対で渡します。</b>
     /// 別々に渡せるようにすると、あるRAWの数字を別の条件の説明と一緒に出せてしまいます。
     /// </summary>
-    public ScopeTarget? CurrentScopeTarget => _rawImage is null || _currentManifest is null
+    public InspectionTarget? CurrentTarget => _rawImage is null || _currentManifest is null
         ? null
-        : new ScopeTarget(_rawImage, ScopeTitle(), CurrentOptions);
+        : new InspectionTarget(_rawImage, ScopeTitle(), CurrentOptions);
+
+    /// <summary>比較の窓を出してほしい、という合図です。</summary>
+    public Action? RequestCompare { get; set; }
+
+    /// <summary>
+    /// 突き合わせる相手の候補です。<b>大きさが同じものだけ</b>並べます。
+    ///
+    /// 先頭には「同じRAWを manifest の記録どおりに読んだもの」を置きます。
+    /// 表示条件を変えて見ているときに、その差がどれだけなのかを数えるためです。
+    /// 選べるのに必ず断られる項目を並べても、断りの文面を読むまで理由が分かりません。
+    /// </summary>
+    public IReadOnlyList<CompareCandidate> BuildCompareCandidates()
+    {
+        var candidates = new List<CompareCandidate>();
+        if (_currentManifest is null || _currentManifestPath is null) return candidates;
+
+        candidates.Add(new CompareCandidate("同じRAW（manifest の記録どおりに読んだもの）", null));
+
+        foreach (var entry in _entries
+                     .Where(e => e.IsLoaded && e.Manifest!.SupportsPreview)
+                     .Where(e => e.Manifest!.Width == _currentManifest.Width
+                                 && e.Manifest.Height == _currentManifest.Height)
+                     .Where(e => !string.Equals(e.Path, _currentManifestPath, StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(e => e.Label, StringComparer.OrdinalIgnoreCase))
+            candidates.Add(new CompareCandidate(
+                $"{Path.GetFileNameWithoutExtension(entry.Path).Replace(".manifest", "")}"
+                + $"（{entry.Manifest!.ColorModel} {entry.Manifest.Subsampling} / "
+                + $"{entry.Manifest.BitDepth}bit / {entry.Manifest.Storage}）",
+                entry.Path));
+
+        return candidates;
+    }
+
+    /// <summary>
+    /// 候補を読み込みます。<b>相手は manifest の記録どおりに読みます。</b>
+    /// 相手側の条件まで変えられるようにすると、出てきた差がどちらの条件のせいなのか言えなくなります。
+    /// </summary>
+    public InspectionTarget? LoadCompareCandidate(CompareCandidate candidate)
+    {
+        if (_rawImage is null || _currentManifest is null) return null;
+
+        if (candidate.ManifestPath is null)
+            return new InspectionTarget(_rawImage,
+                ScopeTitle() + "［manifest の記録どおり］",
+                PreviewRenderOptions.Default(_rawImage.DefaultInterpretation));
+
+        try
+        {
+            var manifest = ManifestInfo.Load(candidate.ManifestPath);
+            var image = RawImage.Load(manifest.ResolveRawPath(candidate.ManifestPath), manifest);
+            return new InspectionTarget(image, candidate.Title,
+                PreviewRenderOptions.Default(image.DefaultInterpretation));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"比較する相手を読み込めませんでした: {ex.Message}";
+            return null;
+        }
+    }
 
     private string ScopeTitle() =>
         $"{Path.GetFileName(_currentRawPath ?? _currentManifestPath ?? "")}"
@@ -144,6 +204,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowHelpCommand { get; }
     public RelayCommand ShowScopeCommand { get; }
+    public RelayCommand ShowCompareCommand { get; }
     public RelayCommand ToggleFullScreenCommand { get; }
     public RelayCommand ExitFullScreenCommand { get; }
 
@@ -868,6 +929,7 @@ public sealed class MainViewModel : ObservableObject
             SaveRawCopyCommand.RaiseCanExecuteChanged();
             ResetInterpretationCommand.RaiseCanExecuteChanged();
             ShowScopeCommand.RaiseCanExecuteChanged();
+            ShowCompareCommand.RaiseCanExecuteChanged();
             RaiseScaleWarning();
             // 絵が入るまで全画面にする意味はないので HasPreview を条件にしています。
             // ここで知らせないと、この RelayCommand は CommandManager を見ていないので
