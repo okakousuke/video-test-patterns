@@ -539,6 +539,7 @@
                   <Button Content="＋" Width="32" MinWidth="32" Command="NavigationCommands.IncreaseZoom"
                           ToolTip="表示倍率を1段階上げます（Ctrl++）。表示領域の中央は動きません。Ctrl+ホイールならカーソル位置が動きません。" />
                   <Button Content="等倍" Command="{Binding ActualSizeCommand}"
+                          Style="{StaticResource ToolActionButton}"
                           ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
                   <!-- 拡大が足りないうちは線のほうが画素より太くなるので、押せなくします。 -->
                   <ToggleButton Content="格子" Style="{StaticResource ToolToggle}"
@@ -546,6 +547,7 @@
                                 IsEnabled="{Binding CanShowPixelGrid}"
                                 ToolTip="600% 以上に拡大すると押せます。それより下で線を引くと、線のほうが画素より太くなって絵が読めません。／画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"
+                          Style="{StaticResource ToolActionButton}"
                           ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
                 </StackPanel>
               </Border>
@@ -688,6 +690,7 @@
                        VerticalAlignment="Top" Foreground="#FF8A6D1F" />
             <Button DockPanel.Dock="Right" Content="等倍にする" Margin="8,0,0,0"
                     VerticalAlignment="Top" Command="{Binding ActualSizeCommand}"
+                    Style="{StaticResource ToolActionButton}"
                     ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
             <TextBlock Text="{Binding ScaleWarningText}" TextWrapping="Wrap"
                        FontSize="11" Foreground="#FF6B5514" />

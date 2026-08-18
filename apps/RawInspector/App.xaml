@@ -17,21 +17,39 @@
     <SolidColorBrush x:Key="BadgeBackground" Color="#FFE8F2FE" />
     <SolidColorBrush x:Key="MutedText" Color="#FF5A6270" />
 
-    <!-- 役割ごとの色。使うのは3系統だけに絞ります。
-         色が増えるほど「どれが主要な操作か」が読めなくなるためです。
-           Accent  … その画面で最初にやること（フォルダを開く）
-           Save    … 何かを書き出す操作
-           それ以外 … 色を付けない -->
+    <!-- 役割ごとの色。増やすほど「どれが主要な操作か」が読めなくなるので、
+         役割が違うものだけに付けます。
+           Accent       … その画面で最初にやること（フォルダを開く）
+           Generate     … 生成の実行。濃い原色で、ここだけ別格にします
+           Save         … 何かを書き出す操作
+           ToolAction   … 道具帯で押すとその場で効くボタン（等倍・全体表示）
+           Analysis     … 数え直して別の窓を開く操作（分布・比較）
+           PreviewStale … 押さないと絵が古いまま、という報せ
+           それ以外     … 色を付けない -->
     <SolidColorBrush x:Key="AccentFill" Color="#FF0F6CBD" />
     <SolidColorBrush x:Key="AccentFillHover" Color="#FF115EA3" />
+    <SolidColorBrush x:Key="GenerateFill" Color="#FF107C10" />
+    <SolidColorBrush x:Key="GenerateFillHover" Color="#FF0B5A0B" />
     <SolidColorBrush x:Key="SaveFill" Color="#FFEAF3E8" />
     <SolidColorBrush x:Key="SaveFillHover" Color="#FFDCEBD8" />
     <SolidColorBrush x:Key="SaveBorder" Color="#FFA8C9A0" />
     <SolidColorBrush x:Key="GroupFill" Color="#FFFBFCFD" />
     <SolidColorBrush x:Key="RowHeaderFill" Color="#FFEBEFF5" />
-    <SolidColorBrush x:Key="AnalysisFill" Color="#FFF0F6FC" />
-    <SolidColorBrush x:Key="AnalysisBorder" Color="#FFB7CDE4" />
-    <SolidColorBrush x:Key="AnalysisFillHover" Color="#FFE2EEF9" />
+    <!-- 別の窓が開く操作（分布・比較）。橙は他のどれとも重なりません。 -->
+    <SolidColorBrush x:Key="AnalysisFill" Color="#FFFFF8F0" />
+    <SolidColorBrush x:Key="AnalysisBorder" Color="#FFEDBC86" />
+    <SolidColorBrush x:Key="AnalysisFillHover" Color="#FFFFEFDE" />
+
+    <!-- 道具帯の中で、押すとその場で効くボタン（等倍・全体表示）。
+         同じ帯に並ぶ切り替え（ToolToggle）は白なので、押しボタンだけ桃色にして
+         「状態」と「操作」を色で分けます。 -->
+    <SolidColorBrush x:Key="ToolActionFill" Color="#FFFEF6FA" />
+    <SolidColorBrush x:Key="ToolActionBorder" Color="#FFEAAEC6" />
+    <SolidColorBrush x:Key="ToolActionFillHover" Color="#FFFDEDF4" />
+
+    <!-- 絵が古いことの報せ。目の端でも気付く程度に、はっきりした黄にします。 -->
+    <SolidColorBrush x:Key="PreviewStaleFill" Color="#FFFFEFA6" />
+    <SolidColorBrush x:Key="PreviewStaleBorder" Color="#FFD8A81C" />
 
     <!-- 数値の桁を揃えたい箇所（コード値、座標、バイト数）で使います。 -->
     <FontFamily x:Key="MonoFont">Consolas, MS Gothic</FontFamily>
@@ -113,6 +131,38 @@
       </Setter>
     </Style>
 
+    <!-- 生成の実行。この窓でいちばん重い操作（実際にRAWが出ます）なので、
+         ほかの淡い色とは別格の、濃い原色にします。 -->
+    <Style TargetType="Button" x:Key="GenerateButton" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Background" Value="{StaticResource GenerateFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource GenerateFill}" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="4"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GenerateFillHover}" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource GenerateFillHover}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFB8C4D2" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="#FFB8C4D2" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- 書き出す操作用。淡い色で「同じ仲間」だと分かる程度にします。 -->
     <Style TargetType="Button" x:Key="SaveButton" BasedOn="{StaticResource FlatButton}">
       <Setter Property="Background" Value="{StaticResource SaveFill}" />
@@ -149,7 +199,7 @@
       <Setter Property="BorderBrush" Value="#FFD3C4A4" />
     </Style>
 
-    <!-- 数値解析を開く操作。主操作ではないので、淡い青で同じ仲間だと示します。 -->
+    <!-- 数値解析を開く操作。押すと別の窓が出ます。橙はこの仲間だけに使います。 -->
     <Style TargetType="Button" x:Key="AnalysisButton" BasedOn="{StaticResource FlatButton}">
       <Setter Property="Background" Value="{StaticResource AnalysisFill}" />
       <Setter Property="BorderBrush" Value="{StaticResource AnalysisBorder}" />
@@ -168,7 +218,44 @@
                 <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AnalysisFillHover}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Chrome" Property="Background" Value="#FFD5E6F5" />
+                <Setter TargetName="Chrome" Property="Background" Value="#FFFBE3CB" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFF4F5F7" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+                <Setter Property="Foreground" Value="#FFAAB0BA" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 道具帯の押しボタン（等倍・全体表示）。
+         この帯は切り替え（ToolToggle）が主で、押していないあいだは白い枠だけです。
+         同じ見た目の押しボタンを混ぜると、どちらが「いまの状態」なのか読めません。
+         桃色にして、押した瞬間に効くものだと分かるようにします。 -->
+    <Style TargetType="Button" x:Key="ToolActionButton" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Background" Value="{StaticResource ToolActionFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource ToolActionBorder}" />
+      <Setter Property="Padding" Value="9,4" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="4"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ToolActionFillHover}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFF9DCE8" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Chrome" Property="Background" Value="#FFF4F5F7" />
