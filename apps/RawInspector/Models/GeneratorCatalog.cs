@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -45,7 +46,9 @@ public sealed record Combination(
 /// 持つと生成器側へつまみを足したときに二重に直すことになり、必ず片方が古くなります。
 ///
 /// <c>Default</c> が null のものは、寸法から決まる（幅・高さで変わる）つまみです。
-/// その求め方は <c>Auto</c> に文章で入っています。
+/// 求め方は <c>Auto</c> に文章で、<c>AutoBasis</c> 以下に数として入っています。
+/// どちらも生成器が絵を描くときに使っているものと同じ出どころなので、
+/// ここで解いた数は実際に描かれる値と一致します。
 /// </summary>
 public sealed class PatternOption
 {
@@ -60,8 +63,31 @@ public sealed class PatternOption
     /// <summary>型が混ざる（数値・文字列・真偽・配列・null）ので、生の JSON のまま持ちます。</summary>
     [JsonPropertyName("default")] public JsonElement Default { get; init; }
 
-    /// <summary>寸法から決まるときの求め方。空なら <c>Default</c> が既定値です。</summary>
+    /// <summary>寸法から決まるときの求め方（文章）。空なら <c>Default</c> が既定値です。</summary>
     [JsonPropertyName("auto")] public string Auto { get; init; } = "";
+
+    // 求め方の中身です。生成器が同じものを使って絵を描いているので、
+    // ここで解いた数は実際に描かれる値と一致します。
+    // 式を文章から読み取っているのではありません（読み取ると必ずずれます）。
+
+    /// <summary>何を割るか。<c>width</c> なら幅、<c>min</c> なら幅と高さの小さいほうです。</summary>
+    [JsonPropertyName("auto_basis")] public string AutoBasis { get; init; } = "";
+    [JsonPropertyName("auto_divisor")] public double AutoDivisor { get; init; }
+    [JsonPropertyName("auto_floor")] public double AutoFloor { get; init; }
+    [JsonPropertyName("auto_integer")] public bool AutoInteger { get; init; }
+
+    /// <summary>既定が寸法から決まるつまみかどうかです。</summary>
+    public bool HasAuto => AutoBasis.Length > 0;
+
+    /// <summary>その寸法での既定値です。寸法依存でなければ null を返します。</summary>
+    public double? ResolveDefault(int width, int height)
+    {
+        if (!HasAuto || AutoDivisor == 0) return null;
+        var basis = AutoBasis == "width" ? width : Math.Min(width, height);
+        return AutoInteger
+            ? Math.Max(AutoFloor, Math.Floor(basis / Math.Round(AutoDivisor)))
+            : Math.Max(AutoFloor, basis / AutoDivisor);
+    }
 
     [JsonPropertyName("minimum")] public double? Minimum { get; init; }
     [JsonPropertyName("maximum")] public double? Maximum { get; init; }
@@ -76,10 +102,24 @@ public sealed class PatternOption
     /// <summary>整数しか受け取らないかどうかです。</summary>
     public bool IsInteger => Kind is "int" or "ints";
 
-    /// <summary>既定値を、入力欄へそのまま置ける文字列にします。寸法依存なら空です。</summary>
-    public string DefaultText()
+    /// <summary>
+    /// 既定値を、入力欄へそのまま置ける文字列にします。
+    ///
+    /// 寸法依存のつまみは、その寸法で解いた数を返します。寸法を渡さない
+    /// （<c>null</c>）ときだけ空になります。
+    /// </summary>
+    public string DefaultText(int? width = null, int? height = null)
     {
-        if (Auto.Length > 0) return "";
+        if (HasAuto)
+        {
+            if (width is not int w || height is not int h) return "";
+            var value = ResolveDefault(w, h);
+            if (value is not double v) return "";
+            return AutoInteger
+                ? ((long)v).ToString(CultureInfo.InvariantCulture)
+                : v.ToString("0.####", CultureInfo.InvariantCulture);
+        }
+
         return Default.ValueKind switch
         {
             JsonValueKind.Null or JsonValueKind.Undefined => "",
@@ -93,11 +133,13 @@ public sealed class PatternOption
     }
 
     /// <summary>入力欄の下に出す、範囲や既定の一言です。</summary>
-    public string Hint()
+    public string Hint(int? width = null, int? height = null)
     {
         var parts = new List<string>();
-        if (Auto.Length > 0) parts.Add($"空欄なら寸法から決めます（{Auto}）");
-        else if (DefaultText().Length > 0) parts.Add($"既定 {DefaultText()}");
+        var text = DefaultText(width, height);
+        if (HasAuto)
+            parts.Add(text.Length > 0 ? $"既定 {text}（寸法から: {Auto}）" : $"寸法から決めます（{Auto}）");
+        else if (text.Length > 0) parts.Add($"既定 {text}");
 
         if (Minimum is not null && Maximum is not null) parts.Add($"{Trim(Minimum.Value)}〜{Trim(Maximum.Value)}");
         else if (Minimum is not null) parts.Add($"{Trim(Minimum.Value)} 以上");

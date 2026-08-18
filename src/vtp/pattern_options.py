@@ -23,12 +23,72 @@ from dataclasses import dataclass
 from typing import Any
 
 __all__ = [
+    "AutoRule",
     "Option",
     "PATTERN_OPTIONS",
+    "auto_default",
     "options_for",
     "validate_pattern_options",
     "describe_pattern_options",
 ]
+
+
+def _num(value: float, *, integer: bool) -> str:
+    if integer:
+        return str(int(value))
+    return f"{value:.1f}" if float(value).is_integer() else str(value)
+
+
+@dataclass(frozen=True)
+class AutoRule:
+    """既定が寸法から決まるときの求め方.
+
+    対象の 12 個はすべて ``max(下限, 基準 ÷ 除数)`` の形で揃っています。
+    文章ではなくこの形で持つのは、**同じ規則を 2 か所に書かないため**です。
+
+    以前は ``patterns.py`` の式と、ここの説明文とに分かれていました。
+    片方だけ直せば黙ってずれますし、画面側は文章から数を出せないので
+    「格子の間隔」の欄が空のままでした。ここを唯一の出どころにして、
+    ``patterns.py`` も ``--describe`` も同じものを読みます。
+    """
+
+    basis: str
+    """``"width"`` なら幅だけで決めます。``"min"`` なら幅と高さの小さいほうです."""
+
+    divisor: float
+    """基準をいくつで割るか."""
+
+    floor: float
+    """これより小さくしません（1 画素未満の線などを作らないため）."""
+
+    integer: bool = True
+    """割り算を切り捨てて整数にするか."""
+
+    def resolve(self, width: int, height: int) -> float:
+        """その寸法での既定値."""
+        base = width if self.basis == "width" else min(width, height)
+        if self.integer:
+            return int(max(self.floor, base // int(self.divisor)))
+        return max(self.floor, base / self.divisor)
+
+    def text(self) -> str:
+        """画面のヒントに出す求め方."""
+        base = "幅" if self.basis == "width" else "min(幅, 高さ)"
+        op = "//" if self.integer else "/"
+        return (
+            f"max({_num(self.floor, integer=self.integer)}, "
+            f"{base} {op} {_num(self.divisor, integer=True)})"
+        )
+
+
+def auto_default(pattern: str, name: str, width: int, height: int) -> float:
+    """寸法から決まる既定値を返す（``patterns.py`` と画面の両方がここを読みます）."""
+    for opt in options_for(pattern):
+        if opt.name == name:
+            if opt.auto is None:
+                raise KeyError(f"{pattern}.{name} は寸法依存の既定ではありません")
+            return opt.auto.resolve(width, height)
+    raise KeyError(f"{pattern} に {name!r} というつまみはありません")
 
 
 @dataclass(frozen=True)
@@ -50,8 +110,8 @@ class Option:
     default: Any = None
     """既定値。``None`` は寸法から決まることを表し、``auto`` に求め方を書きます."""
 
-    auto: str = ""
-    """既定が寸法依存のときの求め方（例: ``min(幅, 高さ) // 240``）."""
+    auto: AutoRule | None = None
+    """既定が寸法依存のときの求め方。固定の既定値を持つものは ``None`` です."""
 
     minimum: float | None = None
     maximum: float | None = None
@@ -79,19 +139,19 @@ PATTERN_OPTIONS: dict[str, tuple[Option, ...]] = {
     ),
     "frame": (
         Option("safe", "安全枠の比", "floats", "画面の内側に引く枠の大きさを、外側から順に割合で並べます。0.9 と 0.8 なら 90% と 80% の位置です。", [0.9, 0.8], minimum=0.0, maximum=1.0),
-        Option("thickness", "線の太さ", "int", "枠線の太さ（画素）。細くするほど、表示側の拡大縮小で線が消えるかを試せます。", None, auto="max(1, min(幅, 高さ) // 240)", minimum=1, maximum=64),
+        Option("thickness", "線の太さ", "int", "枠線の太さ（画素）。細くするほど、表示側の拡大縮小で線が消えるかを試せます。", None, auto=AutoRule(basis="min", divisor=240, floor=1), minimum=1, maximum=64),
     ),
     "crosshair": (
-        Option("thickness", "線の太さ", "int", "十字線の太さ（画素）です。", None, auto="max(1, min(幅, 高さ) // 360)", minimum=1, maximum=64),
-        Option("tick", "目盛の間隔", "int", "十字線に刻む目盛の間隔（画素）。表示側が伸縮していると目盛の間隔が崩れます。", None, auto="max(8, min(幅, 高さ) // 20)", minimum=2, maximum=512),
+        Option("thickness", "線の太さ", "int", "十字線の太さ（画素）です。", None, auto=AutoRule(basis="min", divisor=360, floor=1), minimum=1, maximum=64),
+        Option("tick", "目盛の間隔", "int", "十字線に刻む目盛の間隔（画素）。表示側が伸縮していると目盛の間隔が崩れます。", None, auto=AutoRule(basis="min", divisor=20, floor=8), minimum=2, maximum=512),
     ),
     "grid": (
-        Option("step", "格子の間隔", "int", "縦横の線の間隔（画素）です。", None, auto="max(8, min(幅, 高さ) // 16)", minimum=2, maximum=1024),
-        Option("thickness", "線の太さ", "int", "格子線の太さ（画素）です。", None, auto="max(1, min(幅, 高さ) // 480)", minimum=1, maximum=64),
+        Option("step", "格子の間隔", "int", "縦横の線の間隔（画素）です。", None, auto=AutoRule(basis="min", divisor=16, floor=8), minimum=2, maximum=1024),
+        Option("thickness", "線の太さ", "int", "格子線の太さ（画素）です。", None, auto=AutoRule(basis="min", divisor=480, floor=1), minimum=1, maximum=64),
     ),
     "circles": (
-        Option("step", "円の間隔", "int", "同心円の半径の刻み（画素）です。", None, auto="max(8, min(幅, 高さ) // 16)", minimum=2, maximum=1024),
-        Option("thickness", "線の太さ", "float", "円周の太さ（画素）。円は斜めの縁が続くので、細くすると縁の処理の差が出やすくなります。", None, auto="max(1.0, min(幅, 高さ) / 480)", minimum=0.5, maximum=64.0),
+        Option("step", "円の間隔", "int", "同心円の半径の刻み（画素）です。", None, auto=AutoRule(basis="min", divisor=16, floor=8), minimum=2, maximum=1024),
+        Option("thickness", "線の太さ", "float", "円周の太さ（画素）。円は斜めの縁が続くので、細くすると縁の処理の差が出やすくなります。", None, auto=AutoRule(basis="min", divisor=480, floor=1.0, integer=False), minimum=0.5, maximum=64.0),
     ),
     "radial": (
         Option("spokes", "放射の本数", "int", "中心から伸びる線の本数。増やすほど中心付近が詰まり、間引きの限界が早く来ます。", 36, minimum=2, maximum=720),
@@ -132,7 +192,7 @@ PATTERN_OPTIONS: dict[str, tuple[Option, ...]] = {
         Option("rows", "縦のます目", "int", "市松の縦のます目の数です。", 8, minimum=1, maximum=512),
     ),
     "pulsebar": (
-        Option("pulse", "パルスの幅", "int", "細い縦線の幅（画素）。細いほど、表示側が信号をなまらせているかが出ます。", None, auto="max(1, 幅 // 160)", minimum=1, maximum=512),
+        Option("pulse", "パルスの幅", "int", "細い縦線の幅（画素）。細いほど、表示側が信号をなまらせているかが出ます。", None, auto=AutoRule(basis="width", divisor=160, floor=1), minimum=1, maximum=512),
         _frac("bar", "バーの幅", "並べて置く太い帯の幅を、画面に対する割合で指定します。細い線と同じ高さで出るかを比べます。", 0.25),
     ),
     "splitbars": (
@@ -159,7 +219,7 @@ PATTERN_OPTIONS: dict[str, tuple[Option, ...]] = {
     ),
     "square": (
         _frac("size", "四角の大きさ", "中央の四角の一辺を、画面に対する割合で指定します。", 0.6),
-        Option("thickness", "線の太さ", "int", "四角の線の太さ（画素）です。", None, auto="max(1, min(幅, 高さ) // 200)", minimum=1, maximum=64),
+        Option("thickness", "線の太さ", "int", "四角の線の太さ（画素）です。", None, auto=AutoRule(basis="min", divisor=200, floor=1), minimum=1, maximum=64),
     ),
     "stepmatrix": (
         Option("cols", "横の段数", "int", "横に並べる段の数です。", 16, minimum=1, maximum=256),
@@ -175,7 +235,7 @@ PATTERN_OPTIONS: dict[str, tuple[Option, ...]] = {
     "testcard": (
         _frac("background", "地の明るさ", _BACKGROUND, 0.5),
         Option("blocks", "外周の区画数", "int", "縁に並べる区画の数です。切れている辺があれば表示範囲が足りていません。", 16, minimum=4, maximum=256),
-        Option("grid", "格子の間隔", "int", "背景の格子の間隔（画素）です。", None, auto="max(8, min(幅, 高さ) // 12)", minimum=2, maximum=1024),
+        Option("grid", "格子の間隔", "int", "背景の格子の間隔（画素）です。", None, auto=AutoRule(basis="min", divisor=12, floor=8), minimum=2, maximum=1024),
         Option("steps", "階調の段数", "int", "下部に置く濃淡の段数です。", 11, minimum=2, maximum=64),
         Option("wedge_lines", "くさびの本数", "int", "解像度くさびの線の本数です。", 10, minimum=2, maximum=128),
     ),
@@ -205,7 +265,7 @@ PATTERN_OPTIONS: dict[str, tuple[Option, ...]] = {
         Option("steps", "段数", "int", "上下で向きを変えて並べる濃淡の段数です。隣り合う段の差を上下で見比べられます。", 11, minimum=2, maximum=256),
     ),
     "geometrycard": (
-        Option("grid", "格子の間隔", "int", "背景の格子の間隔（画素）です。", None, auto="max(8, min(幅, 高さ) // 16)", minimum=2, maximum=1024),
+        Option("grid", "格子の間隔", "int", "背景の格子の間隔（画素）です。", None, auto=AutoRule(basis="min", divisor=16, floor=8), minimum=2, maximum=1024),
         Option("blocks", "外周の区画数", "int", "縁に並べる区画の数です。", 16, minimum=4, maximum=256),
     ),
     "resolutioncard": (
@@ -233,7 +293,7 @@ PATTERN_OPTIONS: dict[str, tuple[Option, ...]] = {
     "monoscope": (
         _frac("background", "地の明るさ", _BACKGROUND, 0.5),
         Option("blocks", "外周の区画数", "int", "縁に並べる区画の数です。", 20, minimum=4, maximum=256),
-        Option("grid", "格子の間隔", "int", "背景の格子の間隔（画素）です。", None, auto="max(8, min(幅, 高さ) // 12)", minimum=2, maximum=1024),
+        Option("grid", "格子の間隔", "int", "背景の格子の間隔（画素）です。", None, auto=AutoRule(basis="min", divisor=12, floor=8), minimum=2, maximum=1024),
         Option("steps", "階調の段数", "int", "下部に置く濃淡の段数です。", 9, minimum=2, maximum=64),
         _frac("level", "カラーバーの振幅", "上部に置くカラーバーの明るさです。", 0.75),
         Option("periods", "周期の並び", "ints", "縞の周期（画素）です。添える数字は指定値ではなく、実際に置けた周期から求めます。丸めた結果がそのまま数字になります。", [12, 8, 6, 4, 3, 2], minimum=2, maximum=1024),
@@ -333,8 +393,14 @@ def describe_pattern_options() -> dict[str, list[dict[str, Any]]]:
                 "help": opt.help,
                 "default": opt.default,
             }
-            if opt.auto:
-                row["auto"] = opt.auto
+            if opt.auto is not None:
+                # 文章は画面のヒント用、数は画面が既定値を出すため。
+                # 求め方は 1 か所（AutoRule）から出しているので、ずれません。
+                row["auto"] = opt.auto.text()
+                row["auto_basis"] = opt.auto.basis
+                row["auto_divisor"] = opt.auto.divisor
+                row["auto_floor"] = opt.auto.floor
+                row["auto_integer"] = opt.auto.integer
             if opt.minimum is not None:
                 row["minimum"] = opt.minimum
             if opt.maximum is not None:

@@ -14,6 +14,9 @@ from typing import Any, Callable
 
 import numpy as np
 
+# 寸法から決まる既定値は目録が持っています（画面と同じものを読みます）。
+from .pattern_options import auto_default
+
 RGB = np.ndarray  # (h, w, 3) float32 in [0, 1]
 
 # ---------------------------------------------------------------- 補助
@@ -186,7 +189,7 @@ def frame(width: int, height: int, options: dict[str, Any]) -> RGB:
     ``safe`` に安全領域の比率（既定 0.9 と 0.8）を渡します。
     オーバースキャン・アンダースキャンで、どの枠が欠けるかを見ます。
     """
-    thickness = int(_opt(options, "thickness", max(1, min(width, height) // 240)))
+    thickness = int(_opt(options, "thickness", auto_default("frame", "thickness", width, height)))
     safes = _opt(options, "safe", [0.9, 0.8])
     img = _canvas(width, height, 0.0)
 
@@ -211,8 +214,8 @@ def frame(width: int, height: int, options: dict[str, Any]) -> RGB:
 
 def crosshair(width: int, height: int, options: dict[str, Any]) -> RGB:
     """中心線と目盛り（中心位置・アスペクト比のずれの確認用）."""
-    thickness = int(_opt(options, "thickness", max(1, min(width, height) // 360)))
-    tick = int(_opt(options, "tick", max(8, min(width, height) // 20)))
+    thickness = int(_opt(options, "thickness", auto_default("crosshair", "thickness", width, height)))
+    tick = int(_opt(options, "tick", auto_default("crosshair", "tick", width, height)))
     img = _canvas(width, height, 0.0)
 
     cy0 = (height - thickness) // 2
@@ -232,8 +235,8 @@ def crosshair(width: int, height: int, options: dict[str, Any]) -> RGB:
 
 def grid(width: int, height: int, options: dict[str, Any]) -> RGB:
     """等間隔の格子（歪み・射影変換のずれの確認用）."""
-    step = int(_opt(options, "step", max(8, min(width, height) // 16)))
-    thickness = int(_opt(options, "thickness", max(1, min(width, height) // 480)))
+    step = int(_opt(options, "step", auto_default("grid", "step", width, height)))
+    thickness = int(_opt(options, "thickness", auto_default("grid", "thickness", width, height)))
     img = _canvas(width, height, 0.0)
     for x in range(0, width, step):
         img[:, x : x + thickness] = 1.0
@@ -246,8 +249,8 @@ def grid(width: int, height: int, options: dict[str, Any]) -> RGB:
 
 def circles(width: int, height: int, options: dict[str, Any]) -> RGB:
     """中心からの同心円（アスペクト比・レンズ歪みの確認用）."""
-    step = int(_opt(options, "step", max(8, min(width, height) // 16)))
-    thickness = float(_opt(options, "thickness", max(1.0, min(width, height) / 480)))
+    step = int(_opt(options, "step", auto_default("circles", "step", width, height)))
+    thickness = float(_opt(options, "thickness", auto_default("circles", "thickness", width, height)))
     xx, yy = _coords(width, height)
     cx, cy = width / 2.0, height / 2.0
     r = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
@@ -559,7 +562,7 @@ def pulsebar(width: int, height: int, options: dict[str, Any]) -> RGB:
 
     ``pulse`` で細い線の幅（画素）、``bar`` で白帯の幅の比を指定します。
     """
-    pulse_width = int(_opt(options, "pulse", max(1, width // 160)))
+    pulse_width = int(_opt(options, "pulse", auto_default("pulsebar", "pulse", width, height)))
     bar_ratio = float(_opt(options, "bar", 0.25))
 
     img = _canvas(width, height, 0.0)
@@ -704,7 +707,7 @@ def square(width: int, height: int, options: dict[str, Any]) -> RGB:
     size = float(_opt(options, "size", 0.6))
     if not 0.0 < size <= 1.0:
         raise ValueError("square の size は 0 より大きく 1 以下にしてください")
-    thickness = int(_opt(options, "thickness", max(1, min(width, height) // 200)))
+    thickness = int(_opt(options, "thickness", auto_default("square", "thickness", width, height)))
 
     side = max(1, int(round(min(width, height) * size)))
     x0 = (width - side) // 2
@@ -828,7 +831,7 @@ def testcard(width: int, height: int, options: dict[str, Any]) -> RGB:
     """
     background = float(_opt(options, "background", 0.5))
     blocks = int(_opt(options, "blocks", 16))
-    grid_step = int(_opt(options, "grid", max(8, min(width, height) // 12)))
+    grid_step = int(_opt(options, "grid", auto_default("testcard", "grid", width, height)))
     steps = int(_opt(options, "steps", 11))
     if blocks < 2:
         raise ValueError("testcard の blocks は 2 以上にしてください")
@@ -1156,7 +1159,7 @@ def geometrycard(width: int, height: int, options: dict[str, Any]) -> RGB:
 
     ``grid`` で格子の間隔、``blocks`` で外周ブロックの数を指定します。
     """
-    grid_step = int(_opt(options, "grid", max(8, min(width, height) // 16)))
+    grid_step = int(_opt(options, "grid", auto_default("geometrycard", "grid", width, height)))
     blocks = int(_opt(options, "blocks", 16))
     if blocks < 2:
         raise ValueError("geometrycard の blocks は 2 以上にしてください")
@@ -1449,7 +1452,7 @@ def monoscope(width: int, height: int, options: dict[str, Any]) -> RGB:
     """
     background = float(_opt(options, "background", 0.5))
     blocks = int(_opt(options, "blocks", 20))
-    grid_step = int(_opt(options, "grid", max(8, min(width, height) // 12)))
+    grid_step = int(_opt(options, "grid", auto_default("monoscope", "grid", width, height)))
     periods = [int(p) for p in _opt(options, "periods", [12, 8, 6, 4, 3, 2])]
     steps = int(_opt(options, "steps", 9))
     level = float(_opt(options, "level", 0.75))
