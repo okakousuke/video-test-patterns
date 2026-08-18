@@ -37,18 +37,48 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!-- 出ている絵と食い違っている欄を黄で示します。
+         ボタンが点滅していても、どこを変えたから点滅しているのかは
+         ボタンの側からは読めません。変えた欄そのものに印を付けます。 -->
+    <Style TargetType="TextBox" x:Key="StaleWhenSizeChanged" BasedOn="{StaticResource {x:Type TextBox}}">
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSizeChanged}" Value="True">
+          <Setter Property="Background" Value="{StaticResource PreviewStaleFill}" />
+          <Setter Property="BorderBrush" Value="{StaticResource PreviewStaleBorder}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ComboBox" x:Key="StaleComboWhenSizeChanged" BasedOn="{StaticResource {x:Type ComboBox}}">
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSizeChanged}" Value="True">
+          <Setter Property="Background" Value="{StaticResource PreviewStaleFill}" />
+          <Setter Property="BorderBrush" Value="{StaticResource PreviewStaleBorder}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- 絵が古いあいだ、押してほしいことを薄い黄で報せます。
+         色だけだと視野の端では気付けないので、あわせてゆっくり明滅させます。 -->
     <Style TargetType="Button" x:Key="PreviewButton" BasedOn="{StaticResource FlatButton}">
       <Style.Triggers>
         <DataTrigger Binding="{Binding IsPreviewStale}" Value="True">
+          <Setter Property="Background" Value="{StaticResource PreviewStaleFill}" />
+          <Setter Property="BorderBrush" Value="{StaticResource PreviewStaleBorder}" />
           <DataTrigger.EnterActions>
-            <BeginStoryboard>
+            <!-- 止める側から指せるよう、名前を付けます。名前が無いと
+                 ExitActions で InvalidOperationException になります
+                 （「BeginStoryboardName が必要です」）。 -->
+            <BeginStoryboard x:Name="PreviewStaleBlink">
               <Storyboard AutoReverse="True" RepeatBehavior="Forever">
-                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.45" Duration="0:0:0.55" />
+                <!-- 薄くしすぎると黄が飛んで、かえって読めません。
+                     沈める幅は浅めにして、色が残るところで往復させます。 -->
+                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.72" Duration="0:0:0.65" />
               </Storyboard>
             </BeginStoryboard>
           </DataTrigger.EnterActions>
           <DataTrigger.ExitActions>
-            <RemoveStoryboard />
+            <RemoveStoryboard BeginStoryboardName="PreviewStaleBlink" />
           </DataTrigger.ExitActions>
         </DataTrigger>
       </Style.Triggers>
@@ -79,15 +109,40 @@
           <Button Content="コマンドをコピー" Command="{Binding CopyCommandCommand}" Margin="0,0,6,0"
                   ToolTip="このまま端末へ貼って実行できます。" />
           <Button Content="生成" Command="{Binding GenerateCommand}" MinWidth="80" Margin="0"
+                  Style="{StaticResource GenerateButton}"
                   ToolTip="生成器を実行します。できたRAWは一覧へ取り込んで選択します。" />
         </StackPanel>
         <StackPanel>
-          <!-- 何が実行されるのかを隠しません。中を見せておくほうが、あとから追えます。 -->
-          <TextBlock Text="実行するコマンド" Foreground="{StaticResource MutedText}" FontSize="11" />
-          <TextBox Text="{Binding CommandLine, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
-                   FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="0,2,0,0"
-                   Background="White" MaxHeight="60" VerticalScrollBarVisibility="Auto" />
-          <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" />
+          <!-- いまの条件。参考図は形の図なので、色モデルや格納形式を変えても絵は変わりません。
+               変えたことが画面のどこにも出ないと、コマンドだけが黙って変わります。
+               ビューアの「RAWに記録された生成条件」と同じ言葉で並べます。 -->
+          <ItemsControl ItemsSource="{Binding ConditionSummary}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,3">
+                  <TextBlock Text="{Binding Label}" Margin="0,0,5,0" FontSize="11"
+                             Foreground="{StaticResource MutedText}" />
+                  <TextBlock Text="{Binding Value}" FontSize="11" FontWeight="SemiBold"
+                             FontFamily="{StaticResource MonoFont}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Text="{Binding ConditionNote}" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+          <!-- 中身は隠しません。ただ、ふだん読むのは上の条件のほうで、
+               コマンドは端末で再現したいときに開けば足ります。 -->
+          <Expander Header="実行するコマンド" Margin="0,6,0,0" FontSize="11"
+                    Foreground="{StaticResource MutedText}">
+            <TextBox Text="{Binding CommandLine, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                     FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="0,4,0,0"
+                     Foreground="#FF1F2430"
+                     Background="White" MaxHeight="60" VerticalScrollBarVisibility="Auto" />
+          </Expander>
           <TextBox Text="{Binding Log, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
                    FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="0,4,0,0"
                    Background="White" MaxHeight="120" VerticalScrollBarVisibility="Auto"
@@ -125,13 +180,15 @@
 
           <TextBlock Grid.Row="1" Grid.Column="0" Text="サイズ" Style="{StaticResource FieldLabel}" />
           <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
-            <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+            <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="70"
+                     Style="{StaticResource StaleWhenSizeChanged}" />
             <TextBlock Text="x" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
-            <TextBox Text="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+            <TextBox Text="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="70"
+                     Style="{StaticResource StaleWhenSizeChanged}" />
             <!-- 通称のある大きさは選べるようにします。打ち込みだと、4K のつもりで
                  桁を1つ落としても、生成器は素直にその大きさで作ってしまいます。 -->
             <ComboBox ItemsSource="{Binding SizePresets}" SelectedItem="{Binding SizePreset}"
-                      Width="170" Margin="0,0,0,6"
+                      Width="170" Margin="0,0,0,6" Style="{StaticResource StaleComboWhenSizeChanged}"
                       ToolTip="よく使う大きさから選べます。表に無い大きさは左の欄へ直接打ち込んでください。" />
           </StackPanel>
         </Grid>
@@ -254,9 +311,21 @@
                         </StackPanel>
                       </StackPanel>
 
-                      <Button Content="既定を入れる" Command="{Binding FillDefaultCommand}"
-                              HorizontalAlignment="Left" Padding="6,1" MinWidth="0" Margin="0,0,0,2" FontSize="11"
-                              ToolTip="既定の並びを欄へ入れます。そこから直したいところだけ動かせます。全部そのままならコマンドには載りません。" />
+                      <StackPanel Orientation="Horizontal">
+                        <Button Content="既定を入れる" Command="{Binding FillDefaultCommand}"
+                                HorizontalAlignment="Left" Padding="6,1" MinWidth="0" Margin="0,0,0,2" FontSize="11"
+                                ToolTip="既定の並びを欄へ入れます。そこから直したいところだけ動かせます。全部そのままならコマンドには載りません。" />
+
+                        <!-- 色は R・G・B を3つ打つより、名前で入れるほうが早い場面があります。
+                             カラーバーの8色は各成分が 0 か 1 なので、名前から入れられます。 -->
+                        <TextBlock Text="色から" VerticalAlignment="Center" Margin="8,0,4,2" FontSize="11"
+                                   Foreground="{StaticResource MutedText}"
+                                   Visibility="{Binding HasColorPresets, Converter={StaticResource BoolToVisibility}}" />
+                        <ComboBox ItemsSource="{Binding ColorPresets}" SelectedItem="{Binding ColorPreset}"
+                                  Width="88" Margin="0,0,0,2" FontSize="11" VerticalAlignment="Center"
+                                  Visibility="{Binding HasColorPresets, Converter={StaticResource BoolToVisibility}}"
+                                  ToolTip="選ぶと R・G・B の欄が埋まります。欄を手で直すと、ここは空に戻ります。" />
+                      </StackPanel>
                     </StackPanel>
 
                     <!-- 選択肢 -->

@@ -6,6 +6,9 @@ using RawInspector.Models;
 
 namespace RawInspector.ViewModels;
 
+/// <summary>下の帯に出す「いまの条件」1 行ぶんです。</summary>
+public sealed record ConditionItem(string Label, string Value);
+
 /// <summary>
 /// 生成パネルの状態です。
 ///
@@ -25,9 +28,10 @@ public sealed class GeneratorViewModel : ObservableObject
         _onGenerated = onGenerated;
         GenerateCommand = new RelayCommand(async () => await GenerateAsync(), () => CanGenerate);
         CopyCommandCommand = new RelayCommand(CopyCommandLine, () => !string.IsNullOrEmpty(CommandLine));
-        // 参考図と条件が同じあいだは押せません。押しても同じ絵しか出ないためです。
+        // 出ている絵といまの条件が同じあいだは押せません。押しても同じ絵しか出ないためです。
+        // 押せない＝いま見えているものが、いまの条件の姿だ、という意味になります。
         PreviewCommand = new RelayCommand(async () => await PreviewAsync(),
-                                          () => !_isBusy && !HasProblem && _catalog is not null && DiffersFromThumbnail);
+                                          () => !_isBusy && !HasProblem && _catalog is not null && IsPreviewStale);
         _ = ShowDefaultThumbnailAsync();
     }
 
@@ -117,11 +121,13 @@ public sealed class GeneratorViewModel : ObservableObject
         set
         {
             SavePatternState(_pattern);
+            SavePreview(_pattern);
             if (!Set(ref _pattern, value)) return;
             RebuildPatternOptions();
             RestorePatternState(_pattern);
-            // 別のパターンの絵を出したまま条件だけ変わる、という状態を作りません。
-            _ = ShowDefaultThumbnailAsync();
+            // つまみと同じで、絵も置いてきた状態のまま戻します。
+            // 別のパターンの絵を出したまま条件だけ変わる、という状態は作りません。
+            ShowPreviewFor(_pattern);
             Revalidate();
         }
     }
@@ -266,54 +272,191 @@ public sealed class GeneratorViewModel : ObservableObject
 
     public bool HasPreviewImage => _previewImage is not null;
 
-    /// <summary>いま出ている絵が、触ったつまみを反映したものかどうかです。</summary>
+    /// <summary>いま出ている絵が、生成器に描かせたものかどうかです（参考図なら false）。</summary>
     private bool _isPreviewLive;
     public bool IsPreviewLive { get => _isPreviewLive; private set => Set(ref _isPreviewLive, value); }
-
-    /// <summary>既定から動かしたつまみがあるかどうかです。</summary>
-    public bool HasTouchedOptions => ChangedPatternOptions().Any();
 
     // 参考図を描いた条件です（tools/make_pattern_thumbnails.py と対になっています）。
     private const int ThumbnailWidth = 1920;
     private const int ThumbnailHeight = 1080;
 
     /// <summary>
-    /// いまの条件が、参考図の条件と違うかどうかです。
+    /// いま画面に出ている絵が、どの条件で描かれたものかです。
     ///
-    /// つまみだけでなく寸法も見ます。参考図は 1920×1080 で描いてあるので、
-    /// 4:3 を選べば画面の形そのものが変わり、画素で効くつまみの相対的な細かさも変わります。
+    /// 「押せる／押せない」はこれと今の条件を突き合わせて決めます。
+    /// **既定から動かしたかどうかでは決めません。**
+    /// 既定へ戻したときも、出ている絵が別の条件で描かれたものなら描き直しが要ります
+    /// （「既定へ戻す」を押しても押せないままだったのは、そこを見ていなかったためです）。
     /// </summary>
-    public bool DiffersFromThumbnail =>
-        HasTouchedOptions || _width != ThumbnailWidth || _height != ThumbnailHeight;
+    private string _shownSignature = "";
 
-    public bool IsPreviewStale => DiffersFromThumbnail && !IsPreviewLive;
+    // どの欄がずれているのかを名指しできるよう、寸法だけは別にも控えます。
+    // 「点滅しているが理由が分からない」を無くすためのものです。
+    private int _shownWidth;
+    private int _shownHeight;
+
+    /// <summary>
+    /// 絵が一致しているかを見るためだけの、条件の写しです。
+    ///
+    /// パターン名・寸法・既定から動かしたつまみを並べます。つまみはパターンごとに
+    /// 違うので、パターン名が入っている時点で「別のパターンの絵が出たままだ」も
+    /// 同じ判定で拾えます。つまみの状態自体はパターンごとに持っている
+    /// （<see cref="_patternState"/>）ので、行き来しても各パターンの言い分は変わりません。
+    /// </summary>
+    // 条件の区切り。値の中に出てこない文字なら何でもよいので、制御文字を使います。
+    private const string Separator = "\u001F";
+
+    private static string SignatureOf(string pattern, int width, int height, IEnumerable<string> options) =>
+        string.Join(Separator, new[] { pattern, $"{width}x{height}" }
+                              .Concat(options.OrderBy(o => o, StringComparer.Ordinal)));
+
+    private string CurrentSignature() =>
+        SignatureOf(_pattern, _width, _height, ChangedPatternOptions());
+
+    /// <summary>参考図が表している条件です（そのパターンの既定・1920×1080）。</summary>
+    private static string ThumbnailSignature(string pattern) =>
+        SignatureOf(pattern, ThumbnailWidth, ThumbnailHeight, []);
+
+    /// <summary>出ている絵が、いまの条件のものではないかどうかです。</summary>
+    public bool IsPreviewStale => _shownSignature != CurrentSignature();
+
+    /// <summary>
+    /// 寸法が、出ている絵のものと違うかどうかです。
+    ///
+    /// 「押せる」だけでは、なぜ押せるのかが分かりません。固有のつまみを触っていなくても
+    /// 寸法を変えれば絵は古くなるので、**どこを変えたから古いのか**を欄の側でも示します。
+    /// </summary>
+    public bool IsSizeChanged =>
+        HasPreviewImage && (_width != _shownWidth || _height != _shownHeight);
+
+    /// <summary>
+    /// コマンドの下に出す一言です。
+    ///
+    /// 直前にやったこと（StatusText）だけを出していると、描いたあとに条件を変えても
+    /// 「いまの条件で描きました」と出たままになり、画面が嘘をつきます。
+    /// 古くなっているあいだは、そちらを先に言います。
+    /// </summary>
+    public string ConditionNote =>
+        !IsPreviewStale ? _statusText
+        : IsSizeChanged && HasChangedPatternOptions
+            ? "条件とパターンの設定が変わっています。「この条件で描いてみる」で描き直せます。"
+        : IsSizeChanged
+            ? $"寸法が変わっています（出ている絵は {_shownWidth}×{_shownHeight}）。「この条件で描いてみる」で描き直せます。"
+        : HasChangedPatternOptions
+            ? "パターンの設定が変わっています。「この条件で描いてみる」で描き直せます。"
+            : "条件が変わっています。「この条件で描いてみる」で描き直せます。";
+
+    private bool HasChangedPatternOptions => PatternOptionRows.Any(r => r.IsChanged);
+
+    /// <summary>
+    /// いまの条件を、読める形で並べたものです。
+    ///
+    /// 参考図は**形の図**なので、色モデルや格納形式を変えても絵は変わりません。
+    /// 絵に出ないものを絵で報せることはできませんし、点滅させると
+    /// 「押しても見た目が変わらないのに点滅している」ことになります。
+    /// 変えたことはここに出します。ビューアの「RAWに記録された生成条件」と
+    /// 同じ並び・同じ言葉にして、作るときと見るときで読み替えが要らないようにします。
+    /// </summary>
+    public IReadOnlyList<ConditionItem> ConditionSummary
+    {
+        get
+        {
+            var name = SizePreset;
+            var size = string.IsNullOrEmpty(name) ? $"{_width}×{_height}" : $"{_width}×{_height} {name}";
+
+            var items = new List<ConditionItem>
+            {
+                new("パターン名", _pattern),
+                new("画像サイズ", size),
+                new("画素数の比", AspectRatio.Describe(_width, _height)),
+                new("色モデル", _colorModel),
+                new("色差サブサンプリング", _subsampling),
+                new("ビット深度", $"{_bitDepth} bit"),
+                new("信号レンジ", _range),
+                new("色変換マトリクス",
+                    _colorModel == "rgb" ? "（この色モデルでは未使用）" : _matrix),
+                new("メモリ格納形式", _storage),
+                new("ビット配置",
+                    _bitDepth > 8 ? _alignment : "（8bit では未使用）"),
+            };
+            return items;
+        }
+    }
 
     /// <summary>絵の下に出す一言です。いま何を見ているのかを言い切ります。</summary>
     public string PreviewNote =>
         !HasPreviewImage ? ""
-        : _isPreviewLive ? "いまの条件で描いた絵です。実寸を縮めてあります。"
-        : DiffersFromThumbnail
-            ? $"既定・{ThumbnailWidth}×{ThumbnailHeight} の姿です。いまの条件とは違います。"
-            : "形を見るための参考図です。実寸ではありません。";
+        : !IsPreviewStale
+            ? _isPreviewLive
+                ? "いまの条件で描いた絵です。実寸を縮めてあります。"
+                : "形を見るための参考図です。実寸ではありません。"
+            : _isPreviewLive
+                ? "1つ前の条件で描いた絵です。いまの条件とは違います。"
+                : $"既定・{ThumbnailWidth}×{ThumbnailHeight} の姿です。いまの条件とは違います。";
 
     public PatternGuide Guide => PatternGuide.For(_pattern);
+
+    /// <summary>
+    /// パターンごとに、最後に見ていた絵と、その絵を描いた条件です。
+    ///
+    /// つまみだけを覚えて絵を覚えないと、行き来したときに
+    /// 「つまみは触ったまま・絵は既定の姿」という食い違いが必ず起きます。
+    /// そうなると戻るたびに点滅し、本当に描き直しが要るときの合図が薄れます。
+    /// 置いてきた状態へそのまま戻せるよう、絵の側も持っておきます。
+    /// </summary>
+    private readonly Dictionary<string, (BitmapSource? Image, bool Live, string Signature, int Width, int Height)> _previewByPattern =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private void SavePreview(string pattern)
+    {
+        if (_previewImage is null) return;
+        _previewByPattern[pattern] = (_previewImage, _isPreviewLive, _shownSignature, _shownWidth, _shownHeight);
+    }
+
+    /// <summary>そのパターンで最後に見ていた絵へ戻します。無ければ参考図を出します。</summary>
+    private void ShowPreviewFor(string pattern)
+    {
+        if (!_previewByPattern.TryGetValue(pattern, out var saved))
+        {
+            _ = ShowDefaultThumbnailAsync();
+            return;
+        }
+
+        PreviewImage = saved.Image;
+        IsPreviewLive = saved.Live;
+        _shownSignature = saved.Signature;
+        _shownWidth = saved.Width;
+        _shownHeight = saved.Height;
+        RaisePreviewState();
+    }
 
     private async Task ShowDefaultThumbnailAsync()
     {
         var pattern = _pattern;
+
+        // 読み込みを待つ前に、これから出る絵の条件を控えます。
+        // 待っているあいだだけ「古い」に見えると、パターンを選ぶたびに
+        // ボタンが一瞬光ってしまい、本当に古いときの合図が薄れます。
+        _shownSignature = ThumbnailSignature(pattern);
+        _shownWidth = ThumbnailWidth;
+        _shownHeight = ThumbnailHeight;
+        RaisePreviewState();
+
         var image = await Task.Run(() => PatternThumbnails.For(pattern));
         if (!string.Equals(pattern, _pattern, StringComparison.OrdinalIgnoreCase)) return;
         PreviewImage = image;
         IsPreviewLive = false;
+        // 参考図が出せなかったときは、何も出ていないので常に描き直せる状態にします。
+        if (image is null) _shownSignature = "";
         RaisePreviewState();
     }
 
     private void RaisePreviewState()
     {
         Raise(nameof(PreviewNote));
-        Raise(nameof(HasTouchedOptions));
-        Raise(nameof(DiffersFromThumbnail));
         Raise(nameof(IsPreviewStale));
+        Raise(nameof(IsSizeChanged));
+        Raise(nameof(ConditionNote));
         Raise(nameof(Guide));
         PreviewCommand.RaiseCanExecuteChanged();
     }
@@ -337,6 +480,12 @@ public sealed class GeneratorViewModel : ObservableObject
             Directory.CreateDirectory(folder);
             var basePath = Path.Combine(folder, "current");
 
+            // 描き始める前の条件を控えます。描いているあいだにつまみを触られたら、
+            // 出来上がった絵はもう古いので、そのまま「描き直せる」に戻します。
+            var drawn = CurrentSignature();
+            var drawnWidth = _width;
+            var drawnHeight = _height;
+
             // 出力先だけ差し替えます。ほかは本番と同じ引数です。
             var arguments = BuildArguments();
             var output = arguments.IndexOf("--output");
@@ -357,6 +506,9 @@ public sealed class GeneratorViewModel : ObservableObject
             {
                 PreviewImage = image;
                 IsPreviewLive = true;
+                _shownSignature = drawn;
+                _shownWidth = drawnWidth;
+                _shownHeight = drawnHeight;
                 StatusText = "いまの条件で描きました。";
             }
             else
@@ -385,7 +537,11 @@ public sealed class GeneratorViewModel : ObservableObject
     // --- 判定と表示 ---
 
     private string _statusText = "";
-    public string StatusText { get => _statusText; private set => Set(ref _statusText, value); }
+    public string StatusText
+    {
+        get => _statusText;
+        private set { if (Set(ref _statusText, value)) Raise(nameof(ConditionNote)); }
+    }
 
     private string _problem = "";
     public string Problem
@@ -434,6 +590,7 @@ public sealed class GeneratorViewModel : ObservableObject
     {
         CommandLine = BuildCommandLine();
         Raise(nameof(CanGenerate));
+        Raise(nameof(ConditionSummary));
         // つまみや寸法を触ると、出ている絵が「いまの条件」から外れます。そこを言い直します。
         RaisePreviewState();
 
