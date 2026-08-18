@@ -28,7 +28,7 @@ public sealed class GeneratorViewModel : ObservableObject
         // 参考図と条件が同じあいだは押せません。押しても同じ絵しか出ないためです。
         PreviewCommand = new RelayCommand(async () => await PreviewAsync(),
                                           () => !_isBusy && !HasProblem && _catalog is not null && DiffersFromThumbnail);
-        ShowDefaultThumbnail();
+        _ = ShowDefaultThumbnailAsync();
     }
 
     public RelayCommand GenerateCommand { get; }
@@ -110,15 +110,18 @@ public sealed class GeneratorViewModel : ObservableObject
     // --- 生成条件 ---
 
     private string _pattern = "colorbar";
+    private readonly Dictionary<string, Dictionary<string, (string Text, string Choice, bool Flag)>> _patternState = new(StringComparer.OrdinalIgnoreCase);
     public string Pattern
     {
         get => _pattern;
         set
         {
+            SavePatternState(_pattern);
             if (!Set(ref _pattern, value)) return;
             RebuildPatternOptions();
+            RestorePatternState(_pattern);
             // 別のパターンの絵を出したまま条件だけ変わる、という状態を作りません。
-            ShowDefaultThumbnail();
+            _ = ShowDefaultThumbnailAsync();
             Revalidate();
         }
     }
@@ -212,6 +215,21 @@ public sealed class GeneratorViewModel : ObservableObject
         Raise(nameof(PatternOptionNote));
     }
 
+    private void SavePatternState(string pattern)
+    {
+        if (PatternOptionRows.Count == 0) return;
+        _patternState[pattern] = PatternOptionRows.ToDictionary(
+            row => row.Name, row => (row.Text, row.Choice, row.Flag), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void RestorePatternState(string pattern)
+    {
+        if (!_patternState.TryGetValue(pattern, out var state)) return;
+        foreach (var row in PatternOptionRows)
+            if (state.TryGetValue(row.Name, out var saved)) row.Restore(saved.Text, saved.Choice, saved.Flag);
+        Revalidate();
+    }
+
     /// <summary>触ったつまみをすべて既定へ戻します。</summary>
     public void ResetPatternOptions()
     {
@@ -258,6 +276,8 @@ public sealed class GeneratorViewModel : ObservableObject
     public bool DiffersFromThumbnail =>
         HasTouchedOptions || _width != ThumbnailWidth || _height != ThumbnailHeight;
 
+    public bool IsPreviewStale => DiffersFromThumbnail && !IsPreviewLive;
+
     /// <summary>絵の下に出す一言です。いま何を見ているのかを言い切ります。</summary>
     public string PreviewNote =>
         !HasPreviewImage ? ""
@@ -268,9 +288,12 @@ public sealed class GeneratorViewModel : ObservableObject
 
     public PatternGuide Guide => PatternGuide.For(_pattern);
 
-    private void ShowDefaultThumbnail()
+    private async Task ShowDefaultThumbnailAsync()
     {
-        PreviewImage = PatternThumbnails.For(_pattern);
+        var pattern = _pattern;
+        var image = await Task.Run(() => PatternThumbnails.For(pattern));
+        if (!string.Equals(pattern, _pattern, StringComparison.OrdinalIgnoreCase)) return;
+        PreviewImage = image;
         IsPreviewLive = false;
         RaisePreviewState();
     }
@@ -280,6 +303,7 @@ public sealed class GeneratorViewModel : ObservableObject
         Raise(nameof(PreviewNote));
         Raise(nameof(HasTouchedOptions));
         Raise(nameof(DiffersFromThumbnail));
+        Raise(nameof(IsPreviewStale));
         Raise(nameof(Guide));
         PreviewCommand.RaiseCanExecuteChanged();
     }

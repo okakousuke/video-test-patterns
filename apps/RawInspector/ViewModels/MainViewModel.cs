@@ -910,6 +910,14 @@ public sealed class MainViewModel : ObservableObject
     public string FullScreenInfo =>
         $"{_patternBadge.Replace("パターン名: ", "")} / {PreviewPixelWidth}×{PreviewPixelHeight} / 表示 {ScaleText}";
 
+    public string FullScreenContextInfo =>
+        $"{PreviewPixelWidth}×{PreviewPixelHeight} / {_currentManifest?.BitDepth ?? 0}bit / " +
+        $"{_currentManifest?.ColorModel ?? "-"} {_currentManifest?.Subsampling ?? ""} / {_currentManifest?.Storage ?? "-"}";
+
+    public string FullScreenInterpretationInfo =>
+        $"表示変換: matrix={_selectedMatrix}, range={_selectedRange}, " +
+        $"色差={(_upsample == ChromaUpsample.Nearest ? "最近傍" : "バイリニア")}";
+
     private string _previewTitle = "RAWファイルを選択してください";
     public string PreviewTitle { get => _previewTitle; private set => Set(ref _previewTitle, value); }
 
@@ -929,6 +937,8 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(ScaledWidth));
             Raise(nameof(ScaledHeight));
             Raise(nameof(FullScreenInfo));
+            Raise(nameof(FullScreenContextInfo));
+            Raise(nameof(FullScreenInterpretationInfo));
             SaveImageCommand.RaiseCanExecuteChanged();
             SaveSelectedFormatCommand.RaiseCanExecuteChanged();
             SaveAllFormatsCommand.RaiseCanExecuteChanged();
@@ -966,6 +976,7 @@ public sealed class MainViewModel : ObservableObject
             Raise(nameof(ScaledHeight));
             Raise(nameof(ScaleText));
             Raise(nameof(FullScreenInfo));
+            Raise(nameof(FullScreenInterpretationInfo));
             Raise(nameof(PointsPerPixel));
             Raise(nameof(CanShowPixelGrid));
             Raise(nameof(IsPixelGridVisible));

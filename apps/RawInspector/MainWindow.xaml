@@ -461,25 +461,27 @@
           </Style>
         </DockPanel.Style>
 
-        <Border DockPanel.Dock="Top" Background="{StaticResource BadgeBackground}"
-                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" Padding="8,4" Margin="0,0,0,4"
-                Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
-          <TextBlock Text="{Binding PatternBadge}" FontWeight="Bold" Foreground="{StaticResource AccentText}" />
-        </Border>
-
-        <!-- RAWに記録されている条件。項目名と値で色を分けます。
-             下に出る絵は変換後なので、こちらが「データそのものの条件」だと分かるよう見出しを付けます。 -->
-        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4" CornerRadius="4"
-                Background="{StaticResource PanelBackground}"
+        <!-- パターン名とRAW条件を同じ帯に置きます。パターン名の右側に余っていた空間を、
+             何を見ているかの確認に使います。 -->
+        <Border DockPanel.Dock="Top" Padding="8,4" Margin="0,0,0,6"
+                Background="{StaticResource BadgeBackground}"
                 BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
                 Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
-          <DockPanel>
-            <Border DockPanel.Dock="Left" Background="{StaticResource AccentFill}" CornerRadius="3"
-                    Padding="6,1" Margin="0,0,10,0" VerticalAlignment="Center">
-              <TextBlock Text="RAWの条件" Foreground="White" FontWeight="Bold" FontSize="11" />
-            </Border>
-            <ItemsControl ItemsSource="{Binding RawSummary}"
-                          ToolTip="RAWに記録されている生成条件です。画面に出ている絵の見た目ではなく、データそのものの条件です。">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{Binding PatternBadge}" FontWeight="Bold"
+                       Foreground="{StaticResource AccentText}" VerticalAlignment="Center"
+                       Margin="0,0,18,0" />
+            <DockPanel Grid.Column="1" VerticalAlignment="Center">
+              <Border DockPanel.Dock="Left" Background="{StaticResource AccentFill}" CornerRadius="3"
+                      Padding="6,1" Margin="0,0,10,0" VerticalAlignment="Center">
+                <TextBlock Text="RAWの条件" Foreground="White" FontWeight="Bold" FontSize="11" />
+              </Border>
+              <ItemsControl ItemsSource="{Binding RawSummary}"
+                            ToolTip="RAWに記録されている生成条件です。画面に出ている絵の見た目ではなく、データそのものの条件です。">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
               <WrapPanel Orientation="Horizontal" />
@@ -496,7 +498,8 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
             </ItemsControl>
-          </DockPanel>
+            </DockPanel>
+          </Grid>
         </Border>
 
         <!-- プレビュー操作。
@@ -508,9 +511,9 @@
                       Visibility="{Binding IsFullScreen, Converter={StaticResource InverseBoolToVisibility}}">
           <StackPanel>
 
-            <!-- 1段目: 操作モードと倍率 -->
+            <!-- 1段目: 見た目・解析・画面遷移を意味ごとに分けます。 -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-              <Border Style="{StaticResource ToolGroup}">
+              <Border Style="{StaticResource ToolGroup}" ToolTip="画像の見え方と表示位置を操作します。">
                 <StackPanel Orientation="Horizontal">
                   <RadioButton Content="↖ 選択" GroupName="Tool" Style="{StaticResource ToolToggle}"
                                IsChecked="{Binding IsArrowTool, Mode=TwoWay}"
@@ -524,7 +527,7 @@
                 </StackPanel>
               </Border>
 
-              <Border Style="{StaticResource ToolGroup}" Margin="0">
+              <Border Style="{StaticResource ToolGroup}" Margin="0" ToolTip="画像の倍率・格子・全体表示を操作します。">
                 <StackPanel Orientation="Horizontal">
                   <Button Content="−" Width="32" MinWidth="32" Command="NavigationCommands.DecreaseZoom"
                           ToolTip="表示倍率を1段階下げます（Ctrl+−）。表示領域の中央は動きません。" />
@@ -542,17 +545,29 @@
                                 IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
                                 IsEnabled="{Binding CanShowPixelGrid}"
                                 ToolTip="600% 以上に拡大すると押せます。それより下で線を引くと、線のほうが画素より太くなって絵が読めません。／画素の境目に線を引きます。隣り合う画素が同じ値だと境目は見えないので、「1画素の線」なのか「2画素の帯」なのかは線を引いて初めて数えられます。色差が間引かれている形式では、同じ色差を共有する範囲（4:2:0 なら 2×2 画素）の枠を太く重ねます。" />
-                  <!-- 分布の窓。絵を眺めても「1コード値だけずれている」は分かりません。
-                       別の窓にしているのは、絵と分布を並べて見たいためです。 -->
-                  <Button Content="📊 分布..." Command="{Binding ShowScopeCommand}"
-                          ToolTip="RAWを1本選ぶと押せます。全画素を数えて、ヒストグラム・波形・ベクトルと、規定の範囲を外れた画素の数を出します（F7）。絵と並べて見られるよう別の窓で開きます。" />
-                  <!-- 2枚の突き合わせ。並べて見るだけでは「同じに見える」までしか言えません。 -->
-                  <Button Content="⇔ 比較..." Command="{Binding ShowCompareCommand}"
-                          ToolTip="RAWを1本選ぶと押せます。同じ大きさの別のRAW（または同じRAWを manifest の記録どおりに読んだもの）と突き合わせて、差を数えます（F8）。" />
-                  <Button Content="⛶ 全画面" Command="{Binding ToggleFullScreenCommand}"
-                          ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                   <Button Content="全体表示" Margin="0" Click="OnFitClick"
                           ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
+                </StackPanel>
+              </Border>
+
+              <!-- 解析は表示操作から離した独立グループにします。 -->
+              <Border Style="{StaticResource ToolGroup}" Margin="8,0,0,0"
+                      ToolTip="画像の内容を数値で調べる窓を開きます。">
+                <StackPanel Orientation="Horizontal">
+                  <!-- 分布の窓。絵を眺めても「1コード値だけずれている」は分かりません。 -->
+                  <Button Content="📊 分布..." Style="{StaticResource AnalysisButton}" Command="{Binding ShowScopeCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。全画素を数えて、ヒストグラム・波形・ベクトルと、規定の範囲を外れた画素の数を出します（F7）。絵と並べて見られるよう別の窓で開きます。" />
+                  <Button Content="⇔ 比較..." Style="{StaticResource AnalysisButton}" Command="{Binding ShowCompareCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。同じ大きさの別のRAW（または同じRAWを manifest の記録どおりに読んだもの）と突き合わせて、差を数えます（F8）。" />
+                </StackPanel>
+              </Border>
+
+              <!-- 全画面は画面状態を切り替えるため、解析や表示操作から離します。 -->
+              <Border Style="{StaticResource ToolGroup}" Margin="16,0,0,0"
+                      ToolTip="一覧や操作欄を隠して、画像を全画面で表示します。">
+                <StackPanel Orientation="Horizontal">
+                  <Button Content="⛶ 全画面" Style="{StaticResource AccentButton}" Command="{Binding ToggleFullScreenCommand}"
+                          ToolTip="RAWを1本選ぶと押せます。一覧・条件欄・ツールバーを畳んで、絵だけにします（F11）。Esc でも戻ります。" />
                 </StackPanel>
               </Border>
             </StackPanel>
@@ -650,7 +665,7 @@
              ステータス行にも同じことを短く出していますが、折り返しは
              「説明を読みに行こう」と思う前に誤解が終わってしまいます。
              冗長でも、絵の隣で目に入る位置に置きます。 -->
-        <Border DockPanel.Dock="Top" Margin="0,0,0,4" Padding="8,5" CornerRadius="4"
+        <Border DockPanel.Dock="Top" Margin="0,0,0,4" Padding="8,5" Height="48" CornerRadius="4"
                 Background="#FFFDF6E3" BorderBrush="#FFE0C88A" BorderThickness="1">
           <!-- 全画面では帯ごと畳み、同じ注意を絵の左上へ小さく重ねます（下の浮かせる層）。
                ここに残すと、注意が出た瞬間だけ絵の高さが変わってしまいます。 -->
@@ -714,6 +729,17 @@
                   <!-- ContextMenu は視覚ツリーの外に出るため、DataContext を明示的に引き継ぎます。 -->
                   <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
                                              RelativeSource={RelativeSource Self}}">
+                    <!-- 全画面では画像だけを見ている状態でも、何を表示しているか確認できるようにします。
+                         通常モードでは従来どおり画素情報だけを表示します。 -->
+                    <MenuItem Header="全画面表示中" IsEnabled="False"
+                              Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
+                    <MenuItem Header="{Binding PatternBadge}" IsEnabled="False"
+                              Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
+                    <MenuItem Header="{Binding FullScreenContextInfo}" IsEnabled="False"
+                              Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
+                    <MenuItem Header="{Binding FullScreenInterpretationInfo}" IsEnabled="False"
+                              Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
+                    <Separator Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
                     <!-- 各項目には「実際にコピーされる文字列」をそのまま並べます。
                          名前だけでは何が取れるのか分からないためです。 -->
                     <MenuItem Header="この画素をコピー" IsEnabled="False" />

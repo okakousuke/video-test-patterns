@@ -33,7 +33,13 @@ public sealed class PatternOptionRow : ObservableObject
         RemovePartCommand = new RelayCommand(RemovePart, () => IsVariableLength && Parts.Count > 1);
         FillDefaultCommand = new RelayCommand(FillPartsWithDefault, () => option.DefaultText().Length > 0);
 
-        if (_option.IsList) BuildParts();
+        if (_option.IsList)
+        {
+            BuildParts();
+            FillPartsWithDefault();
+        }
+        else if (IsNumber) _text = _option.DefaultText();
+        else if (IsChoice && _option.Choices.Contains(_option.DefaultText())) _choice = _option.DefaultText();
     }
 
     public string Name => _option.Name;
@@ -67,6 +73,16 @@ public sealed class PatternOptionRow : ObservableObject
 
     public bool HasPresets => Presets.Count > 0;
 
+    /// <summary>
+    /// 端から端まで等間隔に刻んで見せる価値がある、上限の上限です。
+    ///
+    /// noise の seed は 2<sup>31</sup>-1 まで許されます。そこを 8 等分しても
+    /// 3 億刻みの数が並ぶだけで、「これだろう」という値にはなりません。
+    /// 上限がこれを超えるものは、上限が無いのと同じに扱います。
+    /// いま出ている中で一番大きい本物の上限は 1024（周期や間隔）です。
+    /// </summary>
+    private const int WidestRangeWorthSpacing = 4096;
+
     private static IReadOnlyList<string> BuildPresets(PatternOption option)
     {
         if (option.IsList || option.Kind is "bool" or "choice") return [];
@@ -80,16 +96,19 @@ public sealed class PatternOptionRow : ObservableObject
 
         var low = (int)Math.Max(option.Minimum ?? 1, 1);
 
-        if (option.Maximum is double max)
+        if (option.Maximum is double max && max <= WidestRangeWorthSpacing)
         {
             var high = (int)max;
 
             // 上限が 2 の階乗なら、2 の階乗だけを出します。
             // チェッカやハッチのように「4×4 / 8×8 / 16×16 / 32×32」で語る種類のつまみです。
+            //
+            // 刻みは long で持ちます。int だと最後の一歩で上限を跨いだときに
+            // 負へ回り込み、条件が永遠に成り立ってしまいます。
             if (IsPowerOfTwo(high))
             {
                 var powers = new List<string>();
-                for (var v = 1; v <= high; v *= 2)
+                for (var v = 1L; v <= high; v *= 2)
                     if (v >= low) powers.Add(v.ToString(CultureInfo.InvariantCulture));
                 return powers;
             }
@@ -99,13 +118,14 @@ public sealed class PatternOptionRow : ObservableObject
             if (span <= 0) return [low.ToString(CultureInfo.InvariantCulture)];
             var stride = Math.Max(1, (int)Math.Ceiling(span / 7.0));
             var values = new List<string>();
-            for (var v = low; v <= high; v += stride) values.Add(v.ToString(CultureInfo.InvariantCulture));
+            for (var v = (long)low; v <= high; v += stride) values.Add(v.ToString(CultureInfo.InvariantCulture));
             if (values[^1] != high.ToString(CultureInfo.InvariantCulture))
                 values.Add(high.ToString(CultureInfo.InvariantCulture));
             return values;
         }
 
-        // 上限が無いもの（段数や本数）は、よく使う切りのいい数を並べます。
+        // 上限が無いもの（段数や本数）と、上限が桁違いに大きいものは、
+        // よく使う切りのいい数を並べます。
         // 既定値も混ぜて、いま何になっているかを選び直せるようにします。
         var ladder = new List<int> { 2, 4, 5, 8, 10, 16, 20, 32, 64 };
         if (int.TryParse(option.DefaultText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var d))
@@ -179,14 +199,15 @@ public sealed class PatternOptionRow : ObservableObject
         for (var i = 0; i < count; i++)
         {
             var label = IsColor && i < ColorLabels.Length ? ColorLabels[i] : (i + 1).ToString(CultureInfo.InvariantCulture);
-            Parts.Add(new PatternOptionPart(label, ComposeFromParts));
+            Parts.Add(new PatternOptionPart(label, ComposeFromParts, _option.IsInteger, _option.Minimum, _option.Maximum));
         }
         Raise(nameof(HasParts));
     }
 
     private void AddPart()
     {
-        Parts.Add(new PatternOptionPart((Parts.Count + 1).ToString(CultureInfo.InvariantCulture), ComposeFromParts));
+        Parts.Add(new PatternOptionPart((Parts.Count + 1).ToString(CultureInfo.InvariantCulture), ComposeFromParts,
+                                        _option.IsInteger, _option.Minimum, _option.Maximum));
         RemovePartCommand.RaiseCanExecuteChanged();
         ComposeFromParts();
     }
@@ -350,10 +371,26 @@ public sealed class PatternOptionRow : ObservableObject
     /// <summary>入力を空にして、既定へ戻します。</summary>
     public void Reset()
     {
-        foreach (var part in Parts) part.SetWithoutNotify("");
-        Text = "";
-        Choice = KeepDefault;
+        if (_option.IsList) FillPartsWithDefault();
+        else if (IsNumber) Text = _option.DefaultText();
+        else Text = "";
+        Choice = IsChoice && _option.Choices.Contains(_option.DefaultText())
+            ? _option.DefaultText() : KeepDefault;
         Flag = DefaultFlag;
+    }
+
+    public void Restore(string text, string choice, bool flag)
+    {
+        if (_option.IsList)
+        {
+            var values = Parse(text, out _);
+            for (var i = 0; i < Parts.Count; i++)
+                Parts[i].SetWithoutNotify(i < values.Count ? Show(values[i]) : "");
+            ComposeFromParts();
+        }
+        else Text = text;
+        Choice = choice;
+        Flag = flag;
     }
 
     /// <summary>

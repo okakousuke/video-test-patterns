@@ -10,15 +10,25 @@ namespace RawInspector.ViewModels;
 public sealed class PatternOptionPart : ObservableObject
 {
     private readonly Action _changed;
+    private readonly bool _isInteger;
+    private readonly double? _minimum;
+    private readonly double? _maximum;
 
-    public PatternOptionPart(string label, Action changed)
+    public PatternOptionPart(string label, Action changed, bool isInteger, double? minimum, double? maximum)
     {
         Label = label;
         _changed = changed;
+        _isInteger = isInteger;
+        _minimum = minimum;
+        _maximum = maximum;
+        StepUpCommand = new RelayCommand(() => Bump(1));
+        StepDownCommand = new RelayCommand(() => Bump(-1));
     }
 
     /// <summary>欄の上に出す見出しです。色なら R / G / B、それ以外は通し番号です。</summary>
     public string Label { get; }
+    public RelayCommand StepUpCommand { get; }
+    public RelayCommand StepDownCommand { get; }
 
     private string _text = "";
     public string Text
@@ -32,4 +42,17 @@ public sealed class PatternOptionPart : ObservableObject
     /// まとめて入れ替えるときに、1つ動かすたびに組み立て直さないためです。
     /// </summary>
     public void SetWithoutNotify(string text) => Set(ref _text, text ?? "", nameof(Text));
+
+    private void Bump(int direction)
+    {
+        if (!double.TryParse(_text, System.Globalization.NumberStyles.Float,
+                             System.Globalization.CultureInfo.InvariantCulture, out var value))
+            value = _minimum ?? 0;
+        value += (_isInteger ? 1 : 0.05) * direction;
+        if (_minimum is double min) value = Math.Max(min, value);
+        if (_maximum is double max) value = Math.Min(max, value);
+        Text = _isInteger
+            ? ((long)Math.Round(value)).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : Math.Round(value, 4).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+    }
 }

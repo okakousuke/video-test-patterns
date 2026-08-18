@@ -23,20 +23,25 @@
     <Border DockPanel.Dock="Top" Padding="10,8" CornerRadius="4" Margin="0,0,0,8"
             Background="{StaticResource PanelBackground}"
             BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
-      <DockPanel>
-        <Button DockPanel.Dock="Right" Content="？" Width="34" MinWidth="34" Margin="6,0,0,0"
-                Command="Help" ToolTip="この窓の使い方を開きます（F1）。" />
-        <Button DockPanel.Dock="Right" Content="⟳ 取り直す" Margin="0"
-                Command="{Binding RefreshCommand}"
-                ToolTip="いま本体で見ているRAWと表示条件で数え直します（F5）。" />
-        <StackPanel>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0" Margin="0,0,10,0">
           <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
           <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedText}" FontSize="11"
                      Margin="0,2,0,0" TextWrapping="Wrap" />
           <TextBlock Text="{Binding MeasuredUnder}" Foreground="{StaticResource MutedText}" FontSize="11"
                      Margin="0,2,0,0" TextWrapping="Wrap" />
         </StackPanel>
-      </DockPanel>
+        <Button Grid.Column="1" Content="⟳ 取り直す" Margin="0,0,6,0"
+                VerticalAlignment="Top" Command="{Binding RefreshCommand}"
+                ToolTip="いま本体で見ているRAWと表示条件で数え直します（F5）。" />
+        <Button Grid.Column="2" Content="？" Width="34" MinWidth="34"
+                VerticalAlignment="Top" Command="Help" ToolTip="この窓の使い方を開きます（F1）。" />
+      </Grid>
     </Border>
 
     <!-- 古くなった数字を出しているあいだの警告。自動では数え直しません。 -->

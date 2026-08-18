@@ -29,6 +29,9 @@
     <SolidColorBrush x:Key="SaveBorder" Color="#FFA8C9A0" />
     <SolidColorBrush x:Key="GroupFill" Color="#FFFBFCFD" />
     <SolidColorBrush x:Key="RowHeaderFill" Color="#FFEBEFF5" />
+    <SolidColorBrush x:Key="AnalysisFill" Color="#FFF0F6FC" />
+    <SolidColorBrush x:Key="AnalysisBorder" Color="#FFB7CDE4" />
+    <SolidColorBrush x:Key="AnalysisFillHover" Color="#FFE2EEF9" />
 
     <!-- 数値の桁を揃えたい箇所（コード値、座標、バイト数）で使います。 -->
     <FontFamily x:Key="MonoFont">Consolas, MS Gothic</FontFamily>
@@ -144,6 +147,38 @@
     <Style TargetType="Button" x:Key="RawButton" BasedOn="{StaticResource SaveButton}">
       <Setter Property="Background" Value="#FFF6F1E6" />
       <Setter Property="BorderBrush" Value="#FFD3C4A4" />
+    </Style>
+
+    <!-- 数値解析を開く操作。主操作ではないので、淡い青で同じ仲間だと示します。 -->
+    <Style TargetType="Button" x:Key="AnalysisButton" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Background" Value="{StaticResource AnalysisFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AnalysisBorder}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="4"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AnalysisFillHover}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFD5E6F5" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFF4F5F7" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+                <Setter Property="Foreground" Value="#FFAAB0BA" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <!-- 小さなトグルの見た目。
