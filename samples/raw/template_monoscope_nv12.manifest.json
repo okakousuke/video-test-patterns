@@ -1,0 +1,38 @@
+{
+  "manifest_version": 1,
+  "generator": {
+    "name": "video-test-patterns",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-08-17T13:57:05+00:00",
+  "parameters": {
+    "pattern": "monoscope",
+    "width": 192,
+    "height": 144,
+    "color_model": "ycbcr",
+    "subsampling": "4:2:0",
+    "bit_depth": 8,
+    "range": "limited",
+    "matrix": "bt709",
+    "storage": "nv12",
+    "alignment": "lsb",
+    "pattern_options": {}
+  },
+  "parameters_sha256": "42e23b219df0509af92389eada64d9c4da2c6f90ed84a3179b503e3d42879620",
+  "raw_bytes": 41472,
+  "files": [
+    {
+      "kind": "png",
+      "path": "template_monoscope_nv12.preview.png",
+      "bytes": 3028,
+      "sha256": "176cc934d09d6fe5f8ccd4cdba11fd6987735e5de902e7b871026f184bb6440c"
+    },
+    {
+      "kind": "raw",
+      "path": "template_monoscope_nv12.raw",
+      "bytes": 41472,
+      "sha256": "de332e6d75c966910cb21e3d0ceae00acbf2cb6278c15f8d883357db291afb68"
+    }
+  ],
+  "roundtrip_verified": true
+}

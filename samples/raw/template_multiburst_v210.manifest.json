@@ -1,0 +1,38 @@
+{
+  "manifest_version": 1,
+  "generator": {
+    "name": "video-test-patterns",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-08-17T13:57:05+00:00",
+  "parameters": {
+    "pattern": "multiburst",
+    "width": 192,
+    "height": 144,
+    "color_model": "ycbcr",
+    "subsampling": "4:2:2",
+    "bit_depth": 10,
+    "range": "limited",
+    "matrix": "bt709",
+    "storage": "v210",
+    "alignment": "lsb",
+    "pattern_options": {}
+  },
+  "parameters_sha256": "9b05fa500e0f89e7618ac93870e420dce6e396bb6d4baec9e4cc03eff33b880f",
+  "raw_bytes": 73728,
+  "files": [
+    {
+      "kind": "png",
+      "path": "template_multiburst_v210.preview.png",
+      "bytes": 464,
+      "sha256": "eb606492f5f9c0c5cbc1a0f4873f5499180671762c8f9a55025deba59b5a86b6"
+    },
+    {
+      "kind": "raw",
+      "path": "template_multiburst_v210.raw",
+      "bytes": 73728,
+      "sha256": "b8586dd3a2278d4dcd92e41acb1acf42216db41f2a8108cf8d3c695a3c1a6d97"
+    }
+  ],
+  "roundtrip_verified": true
+}

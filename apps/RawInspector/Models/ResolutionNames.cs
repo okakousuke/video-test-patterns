@@ -65,4 +65,16 @@ public static class ResolutionNames
         var name = Of(width, height);
         return name is null ? $"{width}x{height}" : $"{width}x{height} {name}";
     }
+
+    /// <summary>
+    /// 生成画面で選べる大きさです。小さいほうから並べます。
+    ///
+    /// 幅と高さを毎回打ち込ませると、桁を1つ間違えても気付けません
+    /// （4K のつもりで 384x2160 を作っても、生成器は素直に作ります）。
+    /// 通称の付いている大きさは、選べるようにしておきます。
+    /// </summary>
+    public static IReadOnlyList<(int Width, int Height, string Label)> Presets { get; } =
+        Names.OrderBy(e => (long)e.Key.Width * e.Key.Height)
+             .Select(e => (e.Key.Width, e.Key.Height, $"{e.Key.Width}x{e.Key.Height}  {e.Value}"))
+             .ToList();
 }

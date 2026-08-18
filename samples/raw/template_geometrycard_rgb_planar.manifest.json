@@ -1,0 +1,38 @@
+{
+  "manifest_version": 1,
+  "generator": {
+    "name": "video-test-patterns",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-08-17T13:57:05+00:00",
+  "parameters": {
+    "pattern": "geometrycard",
+    "width": 192,
+    "height": 144,
+    "color_model": "rgb",
+    "subsampling": "4:4:4",
+    "bit_depth": 8,
+    "range": "full",
+    "matrix": null,
+    "storage": "planar",
+    "alignment": "lsb",
+    "pattern_options": {}
+  },
+  "parameters_sha256": "0072f8b8d4ea7da24785f51ef73aac4d08ebaded36de00748385d2eecf952fae",
+  "raw_bytes": 82944,
+  "files": [
+    {
+      "kind": "png",
+      "path": "template_geometrycard_rgb_planar.preview.png",
+      "bytes": 2994,
+      "sha256": "cd99a5cdeff78fc363b81447b50a441c3b6cb3538d1cdfa9304c3a0448bf80c9"
+    },
+    {
+      "kind": "raw",
+      "path": "template_geometrycard_rgb_planar.raw",
+      "bytes": 82944,
+      "sha256": "9958af13c8d64f55c2ea8e115b32e8cbd205774b0fcf9fd1538ab4690e43b5a4"
+    }
+  ],
+  "roundtrip_verified": true
+}

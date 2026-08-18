@@ -1,7 +1,7 @@
 <Window x:Class="RawInspector.GeneratorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="パターンを生成" Height="720" Width="720"
+        Title="パターンを生成" Height="760" Width="1180" MinWidth="900"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource WindowBackground}">
 
@@ -24,6 +24,17 @@
       <Setter Property="Margin" Value="0,0,10,6" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Padding" Value="4,3" />
+    </Style>
+
+    <!-- ▲▼ と ＋－。数の欄の隣に置くので、文字の高さ2つぶんに収めます。 -->
+    <Style TargetType="Button" x:Key="SpinButton" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Width" Value="22" />
+      <Setter Property="Height" Value="11" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="FontSize" Value="7" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
   </Window.Resources>
 
@@ -68,7 +79,16 @@
       </DockPanel>
     </Border>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <!-- 左が条件、右が参考図。テスト信号発生器の説明書と同じで、
+         「どんな形の絵か」と「何を見るためのものか」を並べて置きます。
+         押してから絵を見るのでは、条件を決める助けになりません。 -->
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="420" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+
+    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
       <StackPanel>
 
         <TextBlock Text="何を描くか" Style="{StaticResource SectionHeader}" />
@@ -91,6 +111,11 @@
             <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Width="70" />
             <TextBlock Text="x" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
             <TextBox Text="{Binding Height, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+            <!-- 通称のある大きさは選べるようにします。打ち込みだと、4K のつもりで
+                 桁を1つ落としても、生成器は素直にその大きさで作ってしまいます。 -->
+            <ComboBox ItemsSource="{Binding SizePresets}" SelectedItem="{Binding SizePreset}"
+                      Width="170" Margin="0,0,0,6"
+                      ToolTip="よく使う大きさから選べます。表に無い大きさは左の欄へ直接打ち込んでください。" />
           </StackPanel>
         </Grid>
 
@@ -149,7 +174,7 @@
                         BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
                   <Grid>
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="130" />
+                      <ColumnDefinition Width="110" />
                       <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -162,14 +187,59 @@
                                  FontFamily="{StaticResource MonoFont}" FontSize="10" />
                     </StackPanel>
 
-                    <!-- 数値・並び -->
-                    <TextBox Grid.Column="1" Grid.Row="0"
-                             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                             FontFamily="{StaticResource MonoFont}" Margin="0,0,0,2"
-                             Visibility="{Binding IsText, Converter={StaticResource BoolToVisibility}}" />
+                    <!-- 数値ひとつ。よく使う値は選べて、打ち込みもできて、▲▼で1段ずつ動かせます。
+                         数を入れる欄なので、幅は数の分だけにします。 -->
+                    <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,2"
+                                Visibility="{Binding IsNumber, Converter={StaticResource BoolToVisibility}}">
+                      <ComboBox IsEditable="True" Width="96" Margin="0"
+                                ItemsSource="{Binding Presets}"
+                                Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                FontFamily="{StaticResource MonoFont}"
+                                ToolTip="よく使う値から選べます。直接打ち込むこともできます。空にすると既定へ戻ります。" />
+                      <StackPanel Margin="4,0,0,0">
+                        <Button Content="▲" Style="{StaticResource SpinButton}" Command="{Binding StepUpCommand}" />
+                        <Button Content="▼" Style="{StaticResource SpinButton}" Command="{Binding StepDownCommand}" />
+                      </StackPanel>
+                    </StackPanel>
+
+                    <!-- 並び。区切り文字を打たせず、1つずつの欄に分けます。 -->
+                    <StackPanel Grid.Column="1" Grid.Row="0" Margin="0,0,0,2"
+                                Visibility="{Binding HasParts, Converter={StaticResource BoolToVisibility}}">
+                      <StackPanel Orientation="Horizontal">
+                        <ItemsControl ItemsSource="{Binding Parts}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <StackPanel Margin="0,0,4,4">
+                                <TextBlock Text="{Binding Label}" FontSize="9" TextAlignment="Center"
+                                           Foreground="{StaticResource MutedText}" />
+                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="52" Margin="0" TextAlignment="Center"
+                                         FontFamily="{StaticResource MonoFont}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 個数が決まっていない並びだけ、増やしたり減らしたりできます。 -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="2,0,0,4"
+                                    Visibility="{Binding IsVariableLength, Converter={StaticResource BoolToVisibility}}">
+                          <Button Content="－" Style="{StaticResource SpinButton}" Width="22" Height="22"
+                                  Command="{Binding RemovePartCommand}" ToolTip="欄を1つ減らします。" />
+                          <Button Content="＋" Style="{StaticResource SpinButton}" Width="22" Height="22" Margin="2,0,0,0"
+                                  Command="{Binding AddPartCommand}" ToolTip="欄を1つ増やします。" />
+                        </StackPanel>
+                      </StackPanel>
+
+                      <Button Content="既定を入れる" Command="{Binding FillDefaultCommand}"
+                              HorizontalAlignment="Left" Padding="6,1" MinWidth="0" Margin="0,0,0,2" FontSize="11"
+                              ToolTip="既定の並びを欄へ入れます。そこから直したいところだけ動かせます。全部そのままならコマンドには載りません。" />
+                    </StackPanel>
 
                     <!-- 選択肢 -->
-                    <ComboBox Grid.Column="1" Grid.Row="0" HorizontalAlignment="Left" MinWidth="160"
+                    <ComboBox Grid.Column="1" Grid.Row="0" HorizontalAlignment="Left" MinWidth="150"
                               ItemsSource="{Binding ChoiceItems}" SelectedItem="{Binding Choice}" Margin="0,0,0,2"
                               Visibility="{Binding IsChoice, Converter={StaticResource BoolToVisibility}}" />
 
@@ -224,5 +294,47 @@
         </DockPanel>
       </StackPanel>
     </ScrollViewer>
+
+    <!-- 右: 参考図と、このパターンが何のためのものか。 -->
+    <ScrollViewer Grid.Column="1" Width="500" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+
+        <TextBlock Text="どんな絵になるか" Style="{StaticResource SectionHeader}" />
+
+        <!-- 図。背景を暗くしているのは、白地のパターン（frame や hatch）で
+             絵の端がどこまでかを見えるようにするためです。 -->
+        <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                Background="#FF2C2E33" MinHeight="120">
+          <Grid>
+            <Image Source="{Binding PreviewImage}" Stretch="Uniform" MaxWidth="480"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+            <TextBlock Text="このパターンの参考図は入っていません"
+                       Foreground="#FFB0B6C0" FontSize="11" Margin="12"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                       Visibility="{Binding HasPreviewImage, Converter={StaticResource InverseBoolToVisibility}}" />
+          </Grid>
+        </Border>
+
+        <!-- いま何を見ているのかは、必ず絵の下に1行で言い切ります。
+             参考図と実物の区別が付かないまま条件を決められるほうが困ります。 -->
+        <TextBlock Text="{Binding PreviewNote}" Foreground="{StaticResource MutedText}"
+                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+        <Button Content="この条件で描いてみる" Command="{Binding PreviewCommand}"
+                HorizontalAlignment="Left" Margin="0,8,0,0"
+                ToolTip="いまの条件のまま、絵だけを一時フォルダへ描かせて差し替えます。RAWは書きません。参考図と条件が同じあいだは押せません。" />
+
+        <TextBlock Text="細かい線・折り返し・ドットバイドットは、この大きさでは出ません。生成してから等倍（Ctrl+0）で見てください。"
+                   Foreground="{StaticResource MutedText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" />
+
+        <TextBlock Text="何を見るためのものか" Style="{StaticResource SectionHeader}" Margin="0,16,0,4" />
+        <TextBlock Text="{Binding Guide.Purpose}" TextWrapping="Wrap" />
+
+        <TextBlock Text="どう読むか" Style="{StaticResource SectionHeader}" Margin="0,12,0,4" />
+        <TextBlock Text="{Binding Guide.HowToRead}" TextWrapping="Wrap"
+                   Foreground="{StaticResource MutedText}" />
+      </StackPanel>
+    </ScrollViewer>
+    </Grid>
   </DockPanel>
 </Window>
