@@ -21,8 +21,8 @@ public sealed class PatternOptionPart : ObservableObject
         _isInteger = isInteger;
         _minimum = minimum;
         _maximum = maximum;
-        StepUpCommand = new RelayCommand(() => Bump(1));
-        StepDownCommand = new RelayCommand(() => Bump(-1));
+        StepUpCommand = new RelayCommand(() => Bump(1), () => CanBump(1));
+        StepDownCommand = new RelayCommand(() => Bump(-1), () => CanBump(-1));
     }
 
     /// <summary>欄の上に出す見出しです。色なら R / G / B、それ以外は通し番号です。</summary>
@@ -34,14 +34,37 @@ public sealed class PatternOptionPart : ObservableObject
     public string Text
     {
         get => _text;
-        set { if (Set(ref _text, value ?? "")) _changed(); }
+        set
+        {
+            if (!Set(ref _text, value ?? "")) return;
+            StepUpCommand.RaiseCanExecuteChanged();
+            StepDownCommand.RaiseCanExecuteChanged();
+            _changed();
+        }
     }
 
     /// <summary>
     /// 値を入れますが、組み立ては呼びません。
     /// まとめて入れ替えるときに、1つ動かすたびに組み立て直さないためです。
     /// </summary>
-    public void SetWithoutNotify(string text) => Set(ref _text, text ?? "", nameof(Text));
+    public void SetWithoutNotify(string text)
+    {
+        if (!Set(ref _text, text ?? "", nameof(Text))) return;
+        StepUpCommand.RaiseCanExecuteChanged();
+        StepDownCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>その向きへまだ動かせるかどうかです。端では押せなくします。</summary>
+    private bool CanBump(int direction)
+    {
+        if (!double.TryParse(_text, System.Globalization.NumberStyles.Float,
+                             System.Globalization.CultureInfo.InvariantCulture, out var value))
+            return true;
+
+        return direction > 0
+            ? _maximum is not double max || value < max
+            : _minimum is not double min || value > min;
+    }
 
     private void Bump(int direction)
     {

@@ -130,7 +130,7 @@ public sealed class GeneratorViewModel : ObservableObject
     public int Width
     {
         get => _width;
-        set { if (Set(ref _width, value)) { Raise(nameof(SizePreset)); Revalidate(); } }
+        set { if (Set(ref _width, value)) { Raise(nameof(SizePreset)); RefreshOptionSizes(); Revalidate(); } }
     }
 
     /// <summary>
@@ -155,6 +155,7 @@ public sealed class GeneratorViewModel : ObservableObject
             Set(ref _width, hit.Width, nameof(Width));
             Set(ref _height, hit.Height, nameof(Height));
             Raise(nameof(SizePreset));
+            RefreshOptionSizes();
             Revalidate();
         }
     }
@@ -163,7 +164,7 @@ public sealed class GeneratorViewModel : ObservableObject
     public int Height
     {
         get => _height;
-        set { if (Set(ref _height, value)) { Raise(nameof(SizePreset)); Revalidate(); } }
+        set { if (Set(ref _height, value)) { Raise(nameof(SizePreset)); RefreshOptionSizes(); Revalidate(); } }
     }
 
     private string _colorModel = "ycbcr";
@@ -209,10 +210,19 @@ public sealed class GeneratorViewModel : ObservableObject
         if (_catalog is not null)
         {
             foreach (var option in _catalog.OptionsFor(_pattern))
-                PatternOptionRows.Add(new PatternOptionRow(option, Revalidate));
+                PatternOptionRows.Add(new PatternOptionRow(option, Revalidate, () => (_width, _height)));
         }
         Raise(nameof(HasPatternOptions));
         Raise(nameof(PatternOptionNote));
+    }
+
+    /// <summary>
+    /// 寸法から決まる既定値（格子の間隔・線の太さ・パルスの幅）を出し直します。
+    /// 触っていない欄だけが入れ替わります。
+    /// </summary>
+    private void RefreshOptionSizes()
+    {
+        foreach (var row in PatternOptionRows) row.RefreshForSize();
     }
 
     private void SavePatternState(string pattern)
