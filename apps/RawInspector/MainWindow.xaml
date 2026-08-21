@@ -327,69 +327,83 @@
           </StackPanel>
         </Grid>
 
+        <!-- POC: 最も多い「名前を探して開く」を最短経路にします。
+             形式・解像度も同じ欄で検索でき、入力と同時に一覧が絞られます。 -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="色モデル" VerticalAlignment="Center" Margin="0,0,4,0"
-                     ToolTip="RGB系かY'CbCr系かで絞り込みます。" />
-          <ComboBox Grid.Column="1" Margin="0,0,8,0"
-                    ItemsSource="{Binding ColorModelFilters}" SelectedItem="{Binding ColorModelFilter}"
-                    ToolTip="RGB系かY'CbCr系かで一覧を絞り込みます。" />
-          <TextBlock Grid.Column="2" Text="サイズ" VerticalAlignment="Center" Margin="0,0,4,0" />
-          <ComboBox Grid.Column="3" Margin="0,0,6,0"
-                    ItemsSource="{Binding SizeFilters}" SelectedItem="{Binding SizeFilter}"
-                    ToolTip="画像サイズで一覧を絞り込みます。先頭に「〜HD」「〜FHD」「〜4K」の粗い区分があり、その下に実サイズが並びます。" />
-          <!-- 絞ったまま「件数が合わない」と悩まないよう、戻す手段を隣に置きます。 -->
-          <Button Grid.Column="4" Content="解除" Width="46" MinWidth="46" Margin="0"
-                  Command="{Binding ResetFiltersCommand}"
-                  ToolTip="絞り込みを解除して、すべて表示に戻します。" />
+          <TextBox Grid.Column="0" Height="30" Padding="8,4" Margin="0,0,4,0"
+                   Text="{Binding PatternSearchText, UpdateSourceTrigger=PropertyChanged}"
+                   ToolTip="パターン名、解像度、色モデル、bit数、格納形式、ファイル名を空白区切りで検索できます。"
+                   AutomationProperties.Name="パターン・RAW条件を検索" />
+          <Button Grid.Column="1" Content="×" Width="30" MinWidth="30" Height="30" Margin="0"
+                  Command="{Binding ClearPatternSearchCommand}" ToolTip="検索文字を消す" />
         </Grid>
 
-        <!-- パターンと画素数の比での絞り込み。
-             パターンは42種まで増えたので名前で1つに絞れるように。
-             比は「16:9 だけ見比べる」ような場面のためで、サイズ指定だと1解像度に決め打ちになります。 -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="パターン" VerticalAlignment="Center" Margin="0,0,4,0" />
-          <ComboBox Grid.Column="1" Margin="0,0,8,0"
-                    ItemsSource="{Binding PatternFilters}" SelectedItem="{Binding PatternFilter}"
-                    ToolTip="パターン名で一覧を絞り込みます。並ぶのは、開いているフォルダに実際にあるものだけです。" />
-          <TextBlock Grid.Column="2" Text="比" VerticalAlignment="Center" Margin="0,0,4,0" />
-          <ComboBox Grid.Column="3" Margin="0" MinWidth="76"
-                    ItemsSource="{Binding AspectFilters}" SelectedItem="{Binding AspectFilter}"
-                    ToolTip="画素数の比で絞り込みます（映したときの形ではありません）。横長のものから並びます。" />
+          <ComboBox Grid.Column="0" Margin="0,0,8,0" Height="28"
+                    ItemsSource="{Binding PatternCategoryFilters}" SelectedItem="{Binding PatternCategoryFilter}"
+                    ToolTip="用途でパターンを絞り込みます。" />
+          <TextBlock Grid.Column="1" Text="{Binding VisibleManifestSummary}" VerticalAlignment="Center"
+                     Foreground="{StaticResource MutedText}" />
         </Grid>
 
-        <!-- 並び順。名前で並べると 1280x720 が 176x144 より前に来ます（文字として比べるため）。
-             同じパターンを解像度違いで並べたときに大小が読めないので、切り替えられるようにします。 -->
-        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="並び" VerticalAlignment="Center" Margin="0,0,4,0" />
-          <ComboBox Grid.Column="1" Margin="0"
-                    ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SortOrder}"
-                    ToolTip="パターンごとの見出しの中の並び順です。解像度順は画素数で比べるので、1280x720 と 1600x900 のように幅だけでは決まらないものも正しく並びます。見出し（パターン名）自体は常に名前順です。" />
-        </Grid>
+        <!-- 詳細条件は必要なときだけ開きます。機能は削らず、通常の探索から退避します。 -->
+        <Expander DockPanel.Dock="Top" Header="詳細な絞り込み・並び順" Margin="0,0,0,6">
+          <StackPanel Margin="0,6,0,2">
+            <Grid Margin="0,0,0,5">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="色" VerticalAlignment="Center" Margin="0,0,4,0" />
+              <ComboBox Grid.Column="1" Margin="0,0,8,0"
+                        ItemsSource="{Binding ColorModelFilters}" SelectedItem="{Binding ColorModelFilter}" />
+              <TextBlock Grid.Column="2" Text="サイズ" VerticalAlignment="Center" Margin="0,0,4,0" />
+              <ComboBox Grid.Column="3" ItemsSource="{Binding SizeFilters}" SelectedItem="{Binding SizeFilter}" />
+            </Grid>
+            <Grid Margin="0,0,0,5">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="比" VerticalAlignment="Center" Margin="0,0,4,0" />
+              <ComboBox Grid.Column="1" Margin="0,0,8,0"
+                        ItemsSource="{Binding AspectFilters}" SelectedItem="{Binding AspectFilter}" />
+              <Button Grid.Column="2" Content="全条件を解除" Margin="0"
+                      Command="{Binding ResetFiltersCommand}" />
+            </Grid>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="並び" VerticalAlignment="Center" Margin="0,0,4,0" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SortOrder}" />
+            </Grid>
+          </StackPanel>
+        </Expander>
 
         <!-- 選択中のパターンが何のための絵かを出します。
              形だけ見ても目的は分からないので、見るべき場所まで書いておきます。 -->
-        <Border DockPanel.Dock="Bottom" Margin="0,8,0,14" Padding="10,8" Height="200"
-                Background="{StaticResource PanelBackground}"
-                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
-          <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel>
+        <Expander DockPanel.Dock="Bottom" Header="選択中のパターンの説明"
+                  IsExpanded="True" Margin="0,8,0,14"
+                  ToolTip="選択中のパターンについて、用途・見る場所・固有の指定を表示します。">
+          <Border Padding="10,8" Height="200"
+                  Background="{StaticResource PanelBackground}"
+                  BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <StackPanel>
               <TextBlock Text="{Binding PatternBadge}" FontWeight="Bold" Margin="0,0,0,6"
                          Foreground="{StaticResource AccentText}" TextTrimming="CharacterEllipsis" />
 
@@ -402,9 +416,10 @@
               <TextBlock Text="パターン固有の指定" FontWeight="Bold" Margin="0,0,0,2" />
               <TextBlock Text="{Binding PatternGuide.Options}" TextWrapping="Wrap"
                          FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource MutedText}" />
-            </StackPanel>
-          </ScrollViewer>
-        </Border>
+              </StackPanel>
+            </ScrollViewer>
+          </Border>
+        </Expander>
 
         <TreeView x:Name="ManifestTree" ItemsSource="{Binding Groups}"
                   SelectedItemChanged="OnManifestSelected"
@@ -423,20 +438,37 @@
             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FFE3ECF6" />
             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FF11223A" />
             <HierarchicalDataTemplate DataType="{x:Type vm:PatternGroupViewModel}" ItemsSource="{Binding Entries}">
-              <TextBlock Text="{Binding Header}" FontWeight="Bold" />
+              <Grid Margin="0,2">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="44" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Width="40" Height="24" BorderBrush="{StaticResource PanelBorder}"
+                        BorderThickness="1" Background="#FF303238">
+                  <Image Source="{Binding Icon}" Stretch="Uniform" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="6,0,0,0" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Header}" FontWeight="Bold" />
+                  <TextBlock Text="{Binding Category}" FontSize="10" Foreground="{StaticResource MutedText}" />
+                </StackPanel>
+              </Grid>
             </HierarchicalDataTemplate>
             <DataTemplate DataType="{x:Type vm:ManifestEntryViewModel}">
-              <TextBlock Text="{Binding Label}" ToolTip="{Binding ToolTip}">
-                <TextBlock.Style>
-                  <Style TargetType="TextBlock">
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding IsLoaded}" Value="False">
-                        <Setter Property="Foreground" Value="#FFB00020" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </TextBlock.Style>
-              </TextBlock>
+              <StackPanel Margin="0,2,0,3" ToolTip="{Binding ToolTip}">
+                <TextBlock Text="{Binding PrimaryLabel}" FontWeight="SemiBold">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLoaded}" Value="False">
+                          <Setter Property="Foreground" Value="#FFB00020" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding SecondaryLabel}" FontSize="10.5"
+                           Foreground="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
             </DataTemplate>
           </TreeView.Resources>
         </TreeView>
@@ -1128,14 +1160,19 @@
              他の情報と同じ見た目だと読み飛ばされます。 -->
         <Border Margin="0,8,0,0" Padding="10,8" CornerRadius="4"
                 Background="#FFFFFAE8" BorderBrush="#FFE3C775" BorderThickness="2">
-          <DockPanel>
-            <TextBlock DockPanel.Dock="Top" Text="⚠ 表示中の絵の作り方（RAWそのものではありません）"
-                       FontWeight="Bold" Margin="0,0,0,6" Foreground="#FF8A5A00" TextWrapping="Wrap" />
+          <!-- 注意文そのものを見出しにすることで、内容を閉じても
+               「表示中の絵はRAWそのものではない」という前提だけは常に残します。 -->
+          <Expander IsExpanded="True">
+            <Expander.Header>
+              <TextBlock Text="⚠ 表示中の絵の作り方（RAWそのものではありません）"
+                         FontWeight="Bold" Foreground="#FF8A5A00" TextWrapping="Wrap" />
+            </Expander.Header>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <TextBlock Text="{Binding PreviewRecipe}" TextWrapping="Wrap"
-                         FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="#FF4A3A12" />
+                         Margin="0,6,0,0" FontFamily="{StaticResource MonoFont}"
+                         FontSize="11" Foreground="#FF4A3A12" />
             </ScrollViewer>
-          </DockPanel>
+          </Expander>
         </Border>
       </DockPanel>
 

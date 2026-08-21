@@ -53,6 +53,7 @@ public sealed class MainViewModel : ObservableObject
         SaveSelectedFormatCommand = new RelayCommand(SaveSelectedFormat, () => HasPreview);
         SaveAllFormatsCommand = new RelayCommand(SaveAllFormats, () => HasPreview);
         ResetFiltersCommand = new RelayCommand(ResetFilters);
+        ClearPatternSearchCommand = new RelayCommand(() => PatternSearchText = "");
         ResetInterpretationCommand = new RelayCommand(ResetInterpretation, () => HasPreview);
         // 記録どおりのまま書き出しても、元と同じものが1つ増えるだけです。
         // 変えているときにだけ押せるようにし、押せない理由はツールチップに書きます。
@@ -88,6 +89,7 @@ public sealed class MainViewModel : ObservableObject
 
         ColorModelFilters = ["すべて", "RGB", "YUV / YCbCr"];
         SizeFilters = ["すべて"];
+        PatternCategoryFilters = ["すべて"];
         _colorModelFilter = ColorModelFilters[0];
         _sizeFilter = SizeFilters[0];
     }
@@ -256,6 +258,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand SaveSelectedFormatCommand { get; }
     public RelayCommand SaveAllFormatsCommand { get; }
     public RelayCommand ResetFiltersCommand { get; }
+    public RelayCommand ClearPatternSearchCommand { get; }
     public RelayCommand ResetInterpretationCommand { get; }
     public RelayCommand SaveInterpretationManifestCommand { get; }
     public RelayCommand ExpandAllCommand { get; }
@@ -1413,7 +1416,17 @@ public sealed class MainViewModel : ObservableObject
         if (target is not null)
         {
             _keepScaleOnLoad = keepScale is not null && wanted is not null;
+
+            // 一覧の見た目と、実際に開く操作の両方をここでやります。
+            //
+            // IsSelected は TreeViewItem と結んだ印で、**器が作られて初めて** TreeView へ伝わります。
+            // 一覧を作り直した直後はまだ器が無いので、これだけでは SelectedItemChanged が飛びません。
+            // 飛ばなければ SelectedEntry は前のままで、絵も前のままです
+            // （生成したものを取り込んでも、しばらく古い絵が出ていたのはこれが理由です）。
+            // 開くのは一覧の都合ではないので、器を待たずにここで開きます。
             target.IsSelected = true;
+            SelectedEntry = target;
+
             _keepScaleOnLoad = false;
             if (keepScale is not null && wanted is not null) ScalePercent = keepScale.Value;
         }
@@ -1442,6 +1455,29 @@ public sealed class MainViewModel : ObservableObject
     // 「あるはずのものが選べない」より「選べるのに1件も出ない」ほうが分かりにくいためです。
     public ObservableCollection<string> PatternFilters { get; } = ["すべて"];
 
+    public ObservableCollection<string> PatternCategoryFilters { get; }
+
+    private string _patternSearchText = "";
+    public string PatternSearchText
+    {
+        get => _patternSearchText;
+        set { if (Set(ref _patternSearchText, value ?? "")) RebuildGroups(); }
+    }
+
+    private string _patternCategoryFilter = "すべて";
+    public string PatternCategoryFilter
+    {
+        get => _patternCategoryFilter;
+        set { if (Set(ref _patternCategoryFilter, value)) RebuildGroups(); }
+    }
+
+    private string _visibleManifestSummary = "0件";
+    public string VisibleManifestSummary
+    {
+        get => _visibleManifestSummary;
+        private set => Set(ref _visibleManifestSummary, value);
+    }
+
     private string _patternFilter = "すべて";
     public string PatternFilter
     {
@@ -1464,7 +1500,28 @@ public sealed class MainViewModel : ObservableObject
 
         _patternFilter = PatternFilters.Contains(current) ? current : "すべて";
         Raise(nameof(PatternFilter));
+
+        var currentCategory = _patternCategoryFilter;
+        PatternCategoryFilters.Clear();
+        PatternCategoryFilters.Add("すべて");
+        foreach (var category in _entries
+                     .Where(e => e.IsLoaded)
+                     .Select(e => PatternChoice.CategoryOf(e.GroupName))
+                     .Distinct()
+                     .OrderBy(CategoryOrder))
+            PatternCategoryFilters.Add(category);
+        _patternCategoryFilter = PatternCategoryFilters.Contains(currentCategory) ? currentCategory : "すべて";
+        Raise(nameof(PatternCategoryFilter));
     }
+
+    private static int CategoryOrder(string category) => category switch
+    {
+        "階調・色・レベル" => 0,
+        "画面・位置・幾何" => 1,
+        "解像度・周波数" => 2,
+        "放送・総合カード" => 3,
+        _ => 4,
+    };
 
     // 同じ比のものだけを並べたい場面があります（16:9 だけを見比べる、など）。
     // サイズでの絞り込みは1つの解像度に決め打ちになるので、比のほうは別に持ちます。
@@ -1548,10 +1605,14 @@ public sealed class MainViewModel : ObservableObject
         _colorModelFilter = ColorModelFilters[0];
         _sizeFilter = "すべて";
         _patternFilter = "すべて";
+        _patternCategoryFilter = "すべて";
+        _patternSearchText = "";
         _aspectFilter = "すべて";
         Raise(nameof(ColorModelFilter));
         Raise(nameof(SizeFilter));
         Raise(nameof(PatternFilter));
+        Raise(nameof(PatternCategoryFilter));
+        Raise(nameof(PatternSearchText));
         Raise(nameof(AspectFilter));
         RebuildGroups();
         StatusText = "絞り込みを解除しました。";
@@ -1617,9 +1678,15 @@ public sealed class MainViewModel : ObservableObject
             group.Entries.Add(entry);
         }
 
-        var ordered = Groups.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var ordered = Groups
+            .OrderBy(g => CategoryOrder(g.Category))
+            .ThenBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         Groups.Clear();
         foreach (var group in ordered) Groups.Add(group);
+
+        var visibleCount = Groups.Sum(group => group.Entries.Count);
+        VisibleManifestSummary = $"{Groups.Count}パターン / {visibleCount}件";
     }
 
     private bool Matches(ManifestEntryViewModel entry)
@@ -1631,8 +1698,26 @@ public sealed class MainViewModel : ObservableObject
             || ManifestInfo.Same(entry.Manifest.ColorModel, _colorModelFilter);
         var patternMatches = _patternFilter == "すべて"
             || string.Equals(entry.GroupName, _patternFilter, StringComparison.OrdinalIgnoreCase);
+        var categoryMatches = _patternCategoryFilter == "すべて"
+            || string.Equals(PatternChoice.CategoryOf(entry.GroupName), _patternCategoryFilter, StringComparison.Ordinal);
+        var searchMatches = SearchMatches(entry);
         var aspectMatches = _aspectFilter == "すべて" || AspectKey(entry.Manifest) == _aspectFilter;
-        return colorMatches && patternMatches && aspectMatches && MatchesSize(entry.Manifest);
+        return colorMatches && patternMatches && categoryMatches && searchMatches
+            && aspectMatches && MatchesSize(entry.Manifest);
+    }
+
+    private bool SearchMatches(ManifestEntryViewModel entry)
+    {
+        var words = _patternSearchText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length == 0) return true;
+
+        var manifest = entry.Manifest;
+        var searchable = manifest is null
+            ? $"{entry.GroupName} {entry.Path} {entry.Error}"
+            : $"{entry.GroupName} {manifest.ColorModel} {manifest.Storage} {manifest.BitDepth}bit "
+              + $"{manifest.Width}x{manifest.Height} {ResolutionNames.Describe(manifest.Width, manifest.Height)} "
+              + $"{manifest.Raw.Path} {entry.Path}";
+        return words.All(word => searchable.Contains(word, StringComparison.OrdinalIgnoreCase));
     }
 
     private bool MatchesSize(ManifestInfo manifest)
@@ -1653,6 +1738,10 @@ public sealed class MainViewModel : ObservableObject
 
     private void ClearSelection()
     {
+        // 一覧を作り直すと、いま持っている選択は捨てた項目を指したままになります。
+        // 忘れずに残すと、同じRAWを選び直したときに「もう選んである」と見なして開きません
+        // （作り直しても項目は別のインスタンスなので、実際には別物です）。
+        _selectedEntry = null;
         Groups.Clear();
         Stages.Clear();
         Raise(nameof(HasStages));

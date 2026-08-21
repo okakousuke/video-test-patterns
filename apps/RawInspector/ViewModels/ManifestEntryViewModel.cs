@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Media.Imaging;
 using RawInspector.Models;
 
 namespace RawInspector.ViewModels;
@@ -33,6 +34,16 @@ public sealed class ManifestEntryViewModel : ObservableObject
         : $"{System.IO.Path.GetFileName(Manifest.Raw.Path)}  [{Manifest.ColorModel}, {Manifest.Storage}, {Manifest.BitDepth}bit, "
           + $"{ResolutionNames.Describe(Manifest.Width, Manifest.Height)}]";
 
+    /// <summary>一覧では、まず見比べることの多い解像度を大きく出します。</summary>
+    public string PrimaryLabel => Manifest is null
+        ? "読み込み不可"
+        : ResolutionNames.Describe(Manifest.Width, Manifest.Height);
+
+    /// <summary>解像度の次に、RAWの差を判別するための最小限の条件を並べます。</summary>
+    public string SecondaryLabel => Manifest is null
+        ? System.IO.Path.GetFileName(Path)
+        : $"{Manifest.ColorModel}  {Manifest.BitDepth}bit  {Manifest.Storage}  /  {System.IO.Path.GetFileName(Manifest.Raw.Path)}";
+
     public string ToolTip => Error ?? Path;
 
     /// <summary>読み上げや自動テストから中身が分かるようにします（既定だと型名が出ます）。</summary>
@@ -59,6 +70,10 @@ public sealed class ManifestEntryViewModel : ObservableObject
 public sealed class PatternGroupViewModel : ObservableObject
 {
     public required string Name { get; init; }
+
+    public string Category => PatternChoice.CategoryOf(Name);
+
+    public BitmapSource? Icon => PatternThumbnails.ForIcon(Name);
 
     private bool _isSelected;
     public bool IsSelected { get => _isSelected; set => Set(ref _isSelected, value); }
