@@ -28,6 +28,14 @@ public sealed class UserLayout
     /// <summary>一覧の並び順。null や知らない値のときは既定（名前順）に戻します。</summary>
     public string? SortOrder { get; set; }
 
+    /// <summary>
+    /// 生成し終わったら生成窓を畳むかどうか。**null は記録なし**で、既定に従います。
+    ///
+    /// bool そのものにしないのは、この項目を知らない頃の layout.json を読んだときに
+    /// false と区別が付かなくなるためです。「切ってある」のか「まだ訊いていない」のかは別物です。
+    /// </summary>
+    public bool? MinimizeGeneratorAfterGenerate { get; set; }
+
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "RawInspector", "layout.json");

@@ -76,6 +76,9 @@ public partial class MainWindow : Window
         if (layout.SortOrder is { } sort && _viewModel.SortOptions.Contains(sort))
             _viewModel.SortOrder = sort;
 
+        // 生成窓のチェックも、位置とは関係がないので先に受け取ります。
+        _minimizeGeneratorAfterGenerate = layout.MinimizeGeneratorAfterGenerate;
+
         if (!layout.FitsInside(
                 SystemParameters.VirtualScreenLeft,
                 SystemParameters.VirtualScreenTop,
@@ -117,8 +120,20 @@ public partial class MainWindow : Window
             ListWidth = ListColumn.ActualWidth,
             DetailWidth = DetailColumn.ActualWidth,
             SortOrder = _viewModel.SortOrder,
+            // 生成窓を開いたまま終了することがあります。そのときは窓の側が最新なので、
+            // 控えのほうではなく窓から直に読みます（閉じる順に頼らないためです）。
+            MinimizeGeneratorAfterGenerate =
+                _generatorWindow?.MinimizeAfterGenerate ?? _minimizeGeneratorAfterGenerate,
         }.Save();
     }
+
+    /// <summary>
+    /// 生成窓の「生成したら最小化」の記録です。null は記録なしで、生成窓の既定に従います。
+    ///
+    /// 生成窓は閉じるたびに作り直すので、窓の側では覚えていられません。
+    /// 閉じるときに受け取り、次に開くときへ渡します。
+    /// </summary>
+    private bool? _minimizeGeneratorAfterGenerate;
 
     private void OnManifestSelected(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
@@ -285,20 +300,55 @@ public partial class MainWindow : Window
 
     private void OnGenerateClick(object sender, RoutedEventArgs e) => OpenGenerator();
 
+    /// <summary>
+    /// すでに出ている窓を、いちばん手前へ出します。
+    ///
+    /// <c>Activate()</c> だけでは足りません。畳んであるときは畳んだまま前面になり、
+    /// 中身が見えないまま「押しても何も起きない」ように見えます。
+    /// また Windows は、いま操作している窓以外からの前面化を渋ります
+    /// （押した覚えのない窓が割り込んでこないようにするためです）。
+    /// <c>Topmost</c> を一瞬だけ立てると Z 順の先頭へ出ます。**すぐ降ろします。**
+    /// 立てたままにすると、ほかのアプリの上に貼り付いて剥がせなくなります。
+    /// </summary>
+    private static void BringToFront(Window window)
+    {
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Activate();
+        window.Topmost = true;
+        window.Topmost = false;
+        window.Focus();
+    }
+
     private void OpenGenerator()
     {
         if (_generatorWindow is { IsLoaded: true })
         {
-            _generatorWindow.Activate();
+            BringToFront(_generatorWindow);
             return;
         }
 
-        _generatorWindow = new GeneratorWindow(_viewModel.GeneratedFolder, OnGenerated) { Owner = this };
-        _generatorWindow.Closed += (_, _) => _generatorWindow = null;
+        var initialWidth = _viewModel.HasPreview ? _viewModel.PreviewPixelWidth : 1920;
+        var initialHeight = _viewModel.HasPreview ? _viewModel.PreviewPixelHeight : 1080;
+        _generatorWindow = new GeneratorWindow(
+            _viewModel.GeneratedFolder, OnGenerated, _viewModel.SetGenerationState,
+            initialWidth, initialHeight, _minimizeGeneratorAfterGenerate) { Owner = this };
+        _generatorWindow.Closed += (_, _) =>
+        {
+            // 閉じる前にチェックの状態を受け取ります。窓は捨てますが、選んだことは残します。
+            _minimizeGeneratorAfterGenerate = _generatorWindow?.MinimizeAfterGenerate;
+            _generatorWindow = null;
+        };
         _generatorWindow.Show();
     }
 
-    private void OnGenerated(string manifestPath) => _viewModel.AdoptGenerated(manifestPath);
+    private async Task OnGenerated(string manifestPath)
+    {
+        _viewModel.AdoptGenerated(manifestPath);
+
+        // PreviewImage の設定直後に生成中表示を消すと、WPFが画像を描く前の空白が見えます。
+        // レイアウト・描画を含む現在のUIキューが空になるまで生成完了を返しません。
+        await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
+    }
 
     /// <summary>
     /// 分布の窓を開きます。生成の窓と同じで、閉じるまで使い回します。
@@ -318,7 +368,7 @@ public partial class MainWindow : Window
     {
         if (_compareWindow is { IsLoaded: true })
         {
-            _compareWindow.Activate();
+            BringToFront(_compareWindow);
             return;
         }
 
@@ -334,7 +384,7 @@ public partial class MainWindow : Window
     {
         if (_scopeWindow is { IsLoaded: true })
         {
-            _scopeWindow.Activate();
+            BringToFront(_scopeWindow);
             return;
         }
 

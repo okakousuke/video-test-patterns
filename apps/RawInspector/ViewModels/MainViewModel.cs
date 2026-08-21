@@ -932,6 +932,24 @@ public sealed class MainViewModel : ObservableObject
     private string _statusText = "「フォルダを開く」で、RAWとmanifestのあるフォルダを指定してください。";
     public string StatusText { get => _statusText; private set => Set(ref _statusText, value); }
 
+    private bool _isGenerating;
+    public bool IsGenerating
+    {
+        get => _isGenerating;
+        private set => Set(ref _isGenerating, value);
+    }
+
+    /// <summary>
+    /// 別窓の生成処理を本体にも伝えます。生成中は中央キャンバスと下部ステータスの
+    /// 両方へ出し、失敗した場合は別窓を見ていなくても理由が残るようにします。
+    /// </summary>
+    public void SetGenerationState(bool isGenerating, string status)
+    {
+        IsGenerating = isGenerating;
+        if (isGenerating || status.StartsWith("生成できませんでした", StringComparison.Ordinal))
+            StatusText = status;
+    }
+
     private BitmapSource? _previewImage;
     public BitmapSource? PreviewImage
     {
@@ -1337,17 +1355,21 @@ public sealed class MainViewModel : ObservableObject
     /// 開いているフォルダの中なら読み直して選び、外なら**そのフォルダへ移ります**。
     /// 作ったものが見えないままだと、生成できたのかどうかが分かりません。
     /// </summary>
-    public void AdoptGenerated(string manifestPath)
+    public bool AdoptGenerated(string manifestPath)
     {
         var folder = Path.GetDirectoryName(manifestPath);
-        if (folder is null) return;
+        if (folder is null) return false;
 
         ShowDashboard = false;
         var sameFolder = _currentFolder is not null
             && string.Equals(Path.GetFullPath(folder), Path.GetFullPath(_currentFolder), StringComparison.OrdinalIgnoreCase);
 
         LoadFolder(sameFolder ? _currentFolder! : folder, manifestPath, sameFolder ? _scalePercent : null);
-        StatusText = $"生成したものを開きました: {Path.GetFileName(manifestPath)}";
+        // RAWのデコードに失敗した場合は LoadSelected が残した理由を上書きしません。
+        // 成功時だけ「開きました」とし、呼び出し側は実描画を待ってから進捗表示を閉じます。
+        if (HasPreview)
+            StatusText = $"生成したものを開きました: {Path.GetFileName(manifestPath)}";
+        return HasPreview;
     }
 
     /// <summary>フォルダを読み込みます（ダイアログを出さずに指定できるよう公開しています）。</summary>

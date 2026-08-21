@@ -855,6 +855,22 @@
               </Grid>
             </ScrollViewer>
 
+            <!-- 新規生成は高解像度ほど時間がかかります。古い画像だけが残ると
+                 操作を受け付けなかったように見えるため、キャンバス中央で待機状態を明示します。 -->
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MinWidth="280" Padding="22,18" CornerRadius="7"
+                    Background="#F2FFFFFF" BorderBrush="{StaticResource AccentFill}" BorderThickness="2"
+                    Visibility="{Binding IsGenerating, Converter={StaticResource BoolToVisibility}}">
+              <StackPanel>
+                <TextBlock Text="画像を生成中です…" FontSize="17" FontWeight="Bold"
+                           Foreground="{StaticResource AccentText}" HorizontalAlignment="Center" />
+                <ProgressBar IsIndeterminate="True" Height="7" Margin="0,14,0,0" />
+                <TextBlock Text="生成が完了すると、この画面に新しい画像を表示します。"
+                           Margin="0,10,0,0" Foreground="{StaticResource MutedText}"
+                           TextAlignment="Center" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
             <!-- manifestと違う条件で見ているときの警告。キャンバスへ重ねて出します。
                  ツールバーの中に置くと、出たり消えたりするたびに枠の高さが変わってしまいます。
                  段を途中で止めているときの警告も同じ扱いです。どちらも

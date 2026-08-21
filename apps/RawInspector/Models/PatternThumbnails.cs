@@ -22,6 +22,8 @@ public static class PatternThumbnails
     // PNG を解き直す必要はありません（42枚すべてでも数MBです）。
     private static readonly Dictionary<string, BitmapImage?> Cache =
         new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, BitmapImage?> IconCache =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>そのパターンの参考図です。持っていなければ null を返します。</summary>
     public static BitmapImage? For(string? pattern)
@@ -31,13 +33,27 @@ public static class PatternThumbnails
         lock (Cache)
         {
             if (Cache.TryGetValue(pattern, out var cached)) return cached;
-            var image = Load(pattern);
+            var image = Load(pattern, null);
             Cache[pattern] = image;
             return image;
         }
     }
 
-    private static BitmapImage? Load(string pattern)
+    /// <summary>選択欄用の小さな参考図です。元画像を全部展開せず64px幅で読みます。</summary>
+    public static BitmapImage? ForIcon(string? pattern)
+    {
+        if (string.IsNullOrWhiteSpace(pattern)) return null;
+
+        lock (IconCache)
+        {
+            if (IconCache.TryGetValue(pattern, out var cached)) return cached;
+            var image = Load(pattern, 64);
+            IconCache[pattern] = image;
+            return image;
+        }
+    }
+
+    private static BitmapImage? Load(string pattern, int? decodePixelWidth)
     {
         // 埋め込み名は csproj の LogicalName で決めています（thumbnails/colorbar.png）。
         using var stream = typeof(PatternThumbnails).Assembly
@@ -49,6 +65,7 @@ public static class PatternThumbnails
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
+        if (decodePixelWidth is int width) image.DecodePixelWidth = width;
         image.StreamSource = stream;
         image.EndInit();
         image.Freeze();
