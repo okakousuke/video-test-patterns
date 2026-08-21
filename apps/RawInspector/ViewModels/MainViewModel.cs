@@ -1927,6 +1927,33 @@ public sealed class MainViewModel : ObservableObject
         return parts.Count == 0 ? "manifest のとおりの解釈" : string.Join("・", parts);
     }
 
+    /// <summary>
+    /// 圧縮画像として書き出すときの、ビット深度についての一言です。
+    ///
+    /// 書き出しの元は画面に出している絵で、それは 8bit（Bgra32）です。
+    /// **形式を選んでも変わりません。** PNG も TIFF も、可逆なのは「その8bitを可逆に詰める」
+    /// という意味であって、10bit のRAWから 10bit の画像が出るわけではありません。
+    /// ここを取り違えると、階調を確かめるつもりで 8bit に落ちた絵を渡すことになります。
+    /// </summary>
+    /// <param name="label">項目名です。桁を揃えたいので、呼ぶ側の見出しの幅に合わせて渡します。</param>
+    private string BitDepthLineForSave(string label) =>
+        _rawImage is { BitDepth: > 8 }
+            ? $"{label}: 8bit へ落ちます（このRAWは {_rawImage.BitDepth}bit です）\n"
+            : $"{label}: 8bit（このRAWも 8bit なので、ここでは落ちません）\n";
+
+    /// <summary>
+    /// 8bit へ落ちる理由の説明です。
+    ///
+    /// 欄の中へ折り返して入れると、メッセージの幅で改行されて桁が崩れます。
+    /// 長い文は形式ごとの注意（※）と同じ場所へ、続きの文として出します。
+    /// </summary>
+    private string BitDepthCautionForSave() =>
+        _rawImage is { BitDepth: > 8 }
+            ? "※ 書き出しの元は画面に出ている8bitの絵です。"
+              + $"形式を変えても {_rawImage.BitDepth}bit にはなりません（可逆の PNG・TIFF でも同じです）。"
+              + "元の階調が要るときは「RAWコピー」でRAWごと複製してください。\n"
+            : "";
+
     /// <summary>保存するときの既定のファイル名（拡張子なし）です。</summary>
     private string SuggestedBaseName()
     {
@@ -1966,10 +1993,13 @@ public sealed class MainViewModel : ObservableObject
                 $"いま画面に出している絵を、{ImageFormats.Count} 形式まとめて書き出します。\n\n"
                 + $"出力先　　: {folder}\n"
                 + $"寸法　　　: {PreviewPixelWidth} × {PreviewPixelHeight}（表示倍率に関わらず等倍）\n"
+                + BitDepthLineForSave("ビット深度")
                 + $"反映　　　: {ViewSummaryForCopy()}（表示倍率と格子線は入りません）\n\n"
                 + string.Join("\n", ImageFormats.Select(f =>
                     $"{baseName}.{f.Extension}\n    {f.Encoding}"))
-                + "\n\n同じ名前のファイルがあれば上書きします。書き出しますか？",
+                + "\n\n"
+                + BitDepthCautionForSave()
+                + "\n同じ名前のファイルがあれば上書きします。書き出しますか？",
                 "全形式で保存",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Information) != MessageBoxResult.OK) return;
@@ -2011,10 +2041,12 @@ public sealed class MainViewModel : ObservableObject
                 "いま画面に出している絵を、そのまま焼き込んで保存します。\n\n"
                 + $"ファイル名　　　: {fileName}\n"
                 + $"寸法　　　　　　: {PreviewPixelWidth} × {PreviewPixelHeight}（表示倍率に関わらず等倍）\n"
+                + BitDepthLineForSave("ビット深度　　　")
                 + $"反映されるもの　: {ViewSummaryForCopy()}\n"
                 + "反映されないもの: 表示倍率、画素の格子線\n\n"
                 + $"形式　　　　　　: {format.Label}\n"
                 + $"書き出す中身　　: {format.Encoding}\n"
+                + (BitDepthCautionForSave() is { Length: > 0 } depth ? "\n" + depth : "")
                 + (format.Caution.Length > 0 ? $"\n※ {format.Caution}\n" : "")
                 + "\n保存しますか？",
                 "画像を保存",
@@ -2065,7 +2097,9 @@ public sealed class MainViewModel : ObservableObject
 
     private void SaveRawCopy()
     {
-        if (_currentRawPath is null) return;
+        // manifest が無いなら複製しません。RAWだけ渡しても中身を読み取れないので、
+        // 組にできないときは何も作らないほうが親切です。
+        if (_currentRawPath is null || _currentManifestPath is null) return;
 
         // 何が出るのかを先に言います。
         //
@@ -2076,6 +2110,14 @@ public sealed class MainViewModel : ObservableObject
         // 表示のとおりの絵が要るときは「画像を保存」を使ってください（PNG に焼き込みます）。
         var answer = MessageBox.Show(
             "元のRAWファイルをバイト単位でそのまま複製します。\n\n"
+            + "RAWと manifest を、同じ名前で1組にして書き出します。\n"
+            + "RAWのバイト列には寸法もビット深度も格納形式も入っていないので、\n"
+            + "manifest と離すと、そのファイルが何なのかを誰も読み取れなくなります。\n\n"
+            + $"RAW　　　 : {Path.GetFileName(_currentRawPath)}（次の画面で名前を決められます）\n"
+            + "manifest  : RAWと同じ名前で隣に置きます\n"
+            + $"条件　　　: {_currentManifest?.Width} × {_currentManifest?.Height} / "
+            + $"{_currentManifest?.ColorModel} {_currentManifest?.Subsampling} / "
+            + $"{_currentManifest?.BitDepth}bit / {_currentManifest?.Storage}\n\n"
             + $"いま画面に出している解釈（{ViewSummaryForCopy()}）は反映されません。\n"
             + "表示のとおりの絵が必要なときは「画像を保存」を使ってください。\n\n"
             + "複製しますか？",
@@ -2094,16 +2136,47 @@ public sealed class MainViewModel : ObservableObject
         };
         if (dialog.ShowDialog() != true) return;
 
+        // 上書きの確認を保存ダイアログがやってくれるのは、そこで選んだRAWの分だけです。
+        // manifest は名前が決まってから隣へ置くので、訊かれません。こちらで訊きます。
+        // 黙って上書きすると、別のRAWの条件が消えます。
+        var manifestTarget = CopiedManifest.PathFor(dialog.FileName);
+        if (File.Exists(manifestTarget)
+            && MessageBox.Show(
+                $"manifest がすでにあります。上書きしますか？\n\n{manifestTarget}\n\n"
+                + "「いいえ」を選ぶと、RAWも複製しません（組にならないためです）。",
+                "上書きの確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
         try
         {
             File.Copy(_currentRawPath, dialog.FileName, overwrite: true);
-            OutputFolder = Path.GetDirectoryName(dialog.FileName) ?? _outputFolder;
-            StatusText = $"RAWをコピーしました: {dialog.FileName}";
         }
         catch (Exception ex)
         {
             StatusText = $"RAWのコピーに失敗しました: {ex.Message}";
+            return;
         }
+
+        try
+        {
+            File.WriteAllText(manifestTarget, CopiedManifest.Build(
+                File.ReadAllText(_currentManifestPath),
+                Path.GetFileName(_currentManifestPath),
+                Path.GetFileName(dialog.FileName),
+                DateTimeOffset.Now));
+        }
+        catch (Exception ex)
+        {
+            // RAWだけが残った状態です。黙って「コピーしました」と言うと、
+            // 条件の分からないRAWを渡してしまいます。何が起きたかをそのまま出します。
+            StatusText = $"RAWは複製しましたが、manifest を書けませんでした: {ex.Message}"
+                         + "（RAWだけでは寸法も格納形式も分かりません）";
+            return;
+        }
+
+        OutputFolder = Path.GetDirectoryName(dialog.FileName) ?? _outputFolder;
+        StatusText = $"RAWと manifest を1組でコピーしました: {Path.GetFileName(dialog.FileName)}";
     }
 
     /// <summary>

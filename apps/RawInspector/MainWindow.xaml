@@ -201,7 +201,7 @@
                     ToolTip="PNG・JPEG・TIFF・BMP・GIF をまとめて出力先フォルダへ保存します。形式ごとの見え方を並べて比べるとき用です。" />
             <Button Content="💾 RAWコピー" Style="{StaticResource RawButton}" Margin="0"
                     Command="{Binding SaveRawCopyCommand}"
-                    ToolTip="選択中のRAWファイルを、変換も圧縮もせずそのまま保存します。左の圧縮画像とは別物です。" />
+                    ToolTip="選択中のRAWファイルを、変換も圧縮もせずそのまま保存します。左の圧縮画像とは別物です。／manifest も同じ名前で一緒に書き出します。RAWのバイト列には寸法もビット深度も格納形式も入っていないので、manifest と離すと中身を読み取れなくなるためです。" />
           </StackPanel>
         </Border>
 
