@@ -1,0 +1,41 @@
+{
+  "manifest_version": 1,
+  "generator": {
+    "name": "video-test-patterns",
+    "version": "0.1.0"
+  },
+  "generated_at": "2026-08-12T09:52:05+00:00",
+  "parameters": {
+    "pattern": "digitalcard",
+    "width": 3840,
+    "height": 2160,
+    "color_model": "ycbcr",
+    "subsampling": "4:2:0",
+    "bit_depth": 8,
+    "range": "limited",
+    "matrix": "bt709",
+    "storage": "nv12",
+    "alignment": "lsb",
+    "pattern_options": {}
+  },
+  "parameters_sha256": "c8ca26fa5052c9ed34eb22469148d1f78877c20c24b2ee2227e7a45251a5cffa",
+  "raw_bytes": 12441600,
+  "files": [
+    {
+      "kind": "raw",
+      "path": "digitalcard_3840x2160_ycbcr420_8bit_nv12.raw",
+      "bytes": 12441600,
+      "sha256": "f090ab480a6c49e69d04a257e99d89987c3fb300f763a2583291438b25743ed3"
+    }
+  ],
+  "roundtrip_verified": true,
+  "derived_from": {
+    "manifest": "digitalcard_3840x2160_ycbcr420_8bit_nv12.manifest.json",
+    "tool": "RawInspector",
+    "written_at": "2026-08-21T09:10:16+09:00",
+    "dropped_files": [
+      "digitalcard_3840x2160_ycbcr420_8bit_nv12.preview.png"
+    ],
+    "note": "RAWをそのまま複製したときに添えた manifest です。条件は元のものと同じで、指し先のファイル名だけを複製後の名前へ直しています。RAWのバイト列も条件も変えていないので、parameters_sha256 は元の値のままです。RAW以外のファイルは複製しないため、files からは外しました。"
+  }
+}
