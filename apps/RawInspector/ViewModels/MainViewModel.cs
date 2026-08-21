@@ -281,22 +281,30 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    // 3つのうち必ず1つが選ばれている、という組です。だから「入れる」だけを受け取り、
+    // 「外す」は受け取りません。道具を1つも持っていない状態は無いためです。
+    //
+    // ただし**黙って無視はできません。** 右クリックの献立は、いま選ばれている項目を
+    // もう一度押すと自分で印を外し、こちらの値が変わらなければそのまま外れて見えます
+    // （RadioButton は自分で戻すので、この手当てが要るのは献立の側です）。
+    // 外そうとされたら、変わっていないことをこちらから言い直して印を戻します。
+
     public bool IsArrowTool
     {
         get => _tool == PreviewTool.Arrow;
-        set { if (value) Tool = PreviewTool.Arrow; }
+        set { if (value) Tool = PreviewTool.Arrow; else Raise(nameof(IsArrowTool)); }
     }
 
     public bool IsHandTool
     {
         get => _tool == PreviewTool.Hand;
-        set { if (value) Tool = PreviewTool.Hand; }
+        set { if (value) Tool = PreviewTool.Hand; else Raise(nameof(IsHandTool)); }
     }
 
     public bool IsZoomTool
     {
         get => _tool == PreviewTool.Zoom;
-        set { if (value) Tool = PreviewTool.Zoom; }
+        set { if (value) Tool = PreviewTool.Zoom; else Raise(nameof(IsZoomTool)); }
     }
 
     // --- 圧縮画像の保存形式 ---

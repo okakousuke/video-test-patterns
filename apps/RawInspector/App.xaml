@@ -19,8 +19,10 @@
 
     <!-- 役割ごとの色。増やすほど「どれが主要な操作か」が読めなくなるので、
          役割が違うものだけに付けます。
-           Accent       … その画面で最初にやること（フォルダを開く）
-           Generate     … 生成の実行。濃い原色で、ここだけ別格にします
+           Accent       … その画面で最初にやること
+           Generate     … 生成に向かう操作。濃い原色で、ここだけ別格にします
+           Picker       … 場所を選ぶ窓が開く操作（フォルダ・ファイルの選択）
+           Home         … 画面そのものを切り替える操作（HOME へ戻る）
            Save         … 何かを書き出す操作
            ToolAction   … 道具帯で押すとその場で効くボタン（等倍・全体表示）
            Analysis     … 数え直して別の窓を開く操作（分布・比較）
@@ -50,6 +52,22 @@
     <!-- 絵が古いことの報せ。目の端でも気付く程度に、はっきりした黄にします。 -->
     <SolidColorBrush x:Key="PreviewStaleFill" Color="#FFFFEFA6" />
     <SolidColorBrush x:Key="PreviewStaleBorder" Color="#FFD8A81C" />
+
+    <!-- 場所を選ぶ窓が開く操作（フォルダを開く・出力先・選ぶ…）。
+         押すと必ず別の窓が出て、選ぶまで何も起きない、という点で他と役割が違います。
+         散らばっていた3つを同じ色にして、どこにあっても同じ意味だと分かるようにします。
+
+         上の PreviewStale と同じ黄の系統ですが、あちらは濃く塗って明滅する報せで、
+         こちらは道具帯に静かに並ぶボタンです。彩度を落として、報せの側を目立たせます。 -->
+    <SolidColorBrush x:Key="PickerFill" Color="#FFFDF3D6" />
+    <SolidColorBrush x:Key="PickerBorder" Color="#FFDDBE79" />
+    <SolidColorBrush x:Key="PickerFillHover" Color="#FFFBEABB" />
+    <SolidColorBrush x:Key="PickerFillPressed" Color="#FFF6DFA6" />
+
+    <!-- HOME へ戻る操作。開いている一覧や絵はそのままで、画面だけが入れ替わります。
+         行き先が変わる操作なので、その場で効く操作とは色で分けます。 -->
+    <SolidColorBrush x:Key="HomeFill" Color="#FFE8F2FE" />
+    <SolidColorBrush x:Key="HomeFillHover" Color="#FFD5E7FB" />
 
     <!-- 数値の桁を揃えたい箇所（コード値、座標、バイト数）で使います。 -->
     <FontFamily x:Key="MonoFont">Consolas, MS Gothic</FontFamily>
@@ -156,6 +174,69 @@
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Chrome" Property="Background" Value="#FFB8C4D2" />
                 <Setter TargetName="Chrome" Property="BorderBrush" Value="#FFB8C4D2" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 場所を選ぶ窓を開くボタン。フォルダでもファイルでも、どの窓にあっても同じ色にします。 -->
+    <Style TargetType="Button" x:Key="PickerButton" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Background" Value="{StaticResource PickerFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PickerBorder}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="4"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource PickerFillHover}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource PickerFillPressed}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFF4F5F7" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+                <Setter Property="Foreground" Value="#FFAAB0BA" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- HOME へ戻るボタン。青系にして、同じ帯にある黄（場所を選ぶ）と役割を分けます。 -->
+    <Style TargetType="Button" x:Key="HomeButton" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Background" Value="{StaticResource HomeFill}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentFill}" />
+      <Setter Property="Foreground" Value="{StaticResource AccentText}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="4"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HomeFillHover}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background" Value="#FFF4F5F7" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+                <Setter Property="Foreground" Value="#FFAAB0BA" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

@@ -144,7 +144,7 @@
             BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1"
             Visibility="{Binding IsViewerChromeVisible, Converter={StaticResource BoolToVisibility}}">
       <DockPanel>
-        <Button DockPanel.Dock="Left" Content="📁 フォルダを開く" Style="{StaticResource AccentButton}"
+        <Button DockPanel.Dock="Left" Content="📁 フォルダを開く" Style="{StaticResource PickerButton}"
                 Command="{Binding OpenFolderCommand}"
                 ToolTip="manifestとRAWのあるフォルダを開きます（Ctrl+O）。サブフォルダも走査します。" />
 
@@ -156,11 +156,13 @@
         <!-- 最初の画面へいつでも戻れるようにします。素材の件数や生成器の状態は、
              見たくなるのが起動時とはかぎりません。 -->
         <Button DockPanel.Dock="Left" Content="🏠 ホーム" Margin="0,0,6,0"
+                Style="{StaticResource HomeButton}"
                 Command="{Binding ShowDashboardCommand}"
                 ToolTip="最初の画面（素材の状態・生成器・一括生成）へ戻ります。読み込んだ一覧はそのまま残ります。" />
 
         <!-- 作ってすぐ見る、が1周するように、開く操作の隣へ置きます。 -->
         <Button DockPanel.Dock="Left" Content="＋ 生成..." Margin="0,0,6,0" Click="OnGenerateClick"
+                Style="{StaticResource GenerateButton}"
                 ToolTip="パターンを生成します。画素を作るのはPython側の生成器で、ここはその呼び出しです。生成したRAWはこの一覧へ取り込んで選択します。" />
 
         <!-- 画面に出ているのはRAWそのものではない、という前提の説明がここにあります。
@@ -181,6 +183,7 @@
         </TextBlock>
 
         <Button DockPanel.Dock="Right" Content="出力先..." Margin="8,0,0,0"
+                Style="{StaticResource PickerButton}"
                 Command="{Binding SelectOutputFolderCommand}"
                 ToolTip="画像とRAWの保存先フォルダを変更します。" />
 
@@ -743,6 +746,25 @@
                     <MenuItem Header="{Binding FullScreenInterpretationInfo}" IsEnabled="False"
                               Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
                     <Separator Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVisibility}}" />
+
+                    <!-- 道具の切り替え。絵の上で右クリックすれば、道具帯まで手を往復させずに変えられます。
+                         全画面では道具帯そのものが畳まれているうえ、下中央の浮かぶ帯まで
+                         カーソルを持っていくと絵の端から端まで動かすことになります。
+                         印（IsCheckable）を付けているのは、いまどの道具なのかが
+                         絵だけでは分からないためです。 -->
+                    <MenuItem Header="道具" IsEnabled="False" />
+                    <MenuItem Header="↖ 選択" IsCheckable="True"
+                              IsChecked="{Binding IsArrowTool, Mode=TwoWay}"
+                              ToolTip="矢印。ドラッグもホイールも意味を変えません（既定）。" />
+                    <MenuItem Header="✋ 移動" IsCheckable="True"
+                              IsChecked="{Binding IsHandTool, Mode=TwoWay}"
+                              ToolTip="手のひら。ドラッグで表示位置を動かします。ホイールは通常のスクロールです。" />
+                    <MenuItem Header="🔍 拡大鏡" IsCheckable="True"
+                              IsChecked="{Binding IsZoomTool, Mode=TwoWay}"
+                              ToolTip="虫眼鏡。ホイールを回すだけで拡大縮小します（Ctrl不要）。カーソル下の画素は動きません。" />
+
+                    <Separator />
+
                     <!-- 各項目には「実際にコピーされる文字列」をそのまま並べます。
                          名前だけでは何が取れるのか分からないためです。 -->
                     <MenuItem Header="この画素をコピー" IsEnabled="False" />
@@ -970,12 +992,15 @@
                 <Button Content="等倍" Style="{StaticResource OverlayButton}"
                         Command="{Binding ActualSizeCommand}"
                         ToolTip="100%（1画素を1点で表示）に戻します（Ctrl+0）。" />
-                <Button Content="全体表示" Style="{StaticResource OverlayButton}" Click="OnFitClick"
-                        ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
+                <!-- 並びは通常画面の道具帯と同じにします（等倍 → 格子 → 全体表示）。
+                     全画面へ入った瞬間にボタンが1つ分ずれると、同じ場所を押しているつもりで
+                     違うものを押すことになります。 -->
                 <ToggleButton Content="格子" Style="{StaticResource OverlayToggle}"
                               IsChecked="{Binding ShowPixelGrid, Mode=TwoWay}"
                               IsEnabled="{Binding CanShowPixelGrid}"
                               ToolTip="600% 以上に拡大すると押せます。画素の境目に線を引きます。" />
+                <Button Content="全体表示" Style="{StaticResource OverlayButton}" Click="OnFitClick"
+                        ToolTip="画像全体が入る倍率にして中央へ寄せます。" />
 
                 <Rectangle Width="1" Height="18" Margin="6,0,6,0" Fill="{StaticResource OverlayStroke}" />
 
